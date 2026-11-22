@@ -32,6 +32,11 @@
         "id": "aw-agent-architect",
         "path": "skills/aw-agent-architect/SKILL.md",
         "description": "Contract for the Architect agent \u2014 decides how a change should be shaped against the codebase that already exists, writes the decision down with its trade-offs, and hands the coders a plan grounded in real file paths rather than a sketch."
+      },
+      {
+        "id": "aw-code-review-response",
+        "path": "skills/aw-code-review-response/SKILL.md",
+        "description": "How a Coder acts on a reviewed PR \u2014 judge every finding against the card, reply on each one (handled here / another card / won't do), then push or merge per the v2 gate mechanics, or escalate to the manager."
       }
     ],
     "agents": {

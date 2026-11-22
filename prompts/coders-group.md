@@ -41,6 +41,9 @@ Your lane specifically:
   only in the working tree waiting for someone to ask. If your delivery is
   partial, uncertain, or the tests aren't green, say so instead of
   committing it; a broken commit is worse than an unasked one.
+- **Acting on review findings?** Load the `aw-code-review-response` skill first and
+  follow it: it holds every rule (reply on each finding, push/merge mechanics,
+  escalation). Wake prompts only carry the PR url and facts.
 
 This contract is shared by every model variant of the role (Sonnet, Opus,
 Haiku, GPT-5); nothing here assumes which one you are. Your full contract
