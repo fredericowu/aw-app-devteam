@@ -455,6 +455,8 @@ def test_code_review_response_skill_ships_and_holds_the_rules(manifest):
     for needle in ("(a) **Handled in this PR**", "(b) **Handled by another card**",
                    "(c) **Won't do**", "You CAN merge", "do NOT need the reviewer to agree",
                    "Do NOT post\n  `/aw-review`", "Mode B PR-shaped work order",
-                   "--force-with-lease"):
+                   "--force-with-lease", "`devteam/provenance` are all `success`",
+                   "same non-empty `target_url`",
+                   "Required CI on that sha is green"):
         assert needle in text, needle
     assert "aw-code-review-response" in (MANIFEST.parent / "prompts/coders-group.md").read_text()
