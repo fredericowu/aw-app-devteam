@@ -210,34 +210,3 @@ are entirely about whether the declarations are internally consistent.
 <!-- aw-app-* fleet CI/PR migration (Batch 6) — follow-up no-op PR proving the
      comment (/aw-review) and workflow_run merge paths now that code-review.yml
      exists on the default branch. Dev Team app — CI/PR migration follow-up (Batch 6). CI workflow files only; agent prompts/contracts untouched. -->
-
-## Standalone Coders (`standalone-coder-*`)
-
-`standalone-coder-haiku`, `standalone-coder-sonnet` and `standalone-coder-sol` are flow-detached
-twins of `coder-haiku`, `coder-sonnet` and `coder-sol` (same prompt, skill, agent
-config and model), in group `standalone-coders`, which is never a node in an Agents
-Flow. Agents Flow instructions and the missing-action reprompt both key on flow
-membership, so these agents get neither: they return a plain result to the
-caller. Opt-in is explicit: name a `standalone-coder-*` slug. No platform change.
-
-When to pick which: use `coder-*` when a Kanban card must be driven and closed
-through the flow. Use `standalone-coder-*` for bounded work whose result goes straight
-back to the dispatching agent (for example an N-repo rollout).
-
-Supported routes (v1 is cardless only):
-
-- `run_agent_async(slug="standalone-coder-sonnet", target_slug="<existing-target>")` from a caller that has **no** Kanban card.
-- `run_agents_parallel` with `standalone-coder-*` children, from any caller (children
-  never bind a card). One child is allowed.
-
-Unsupported: `run_agent_async` to a standalone slug from a card-bound caller (the card
-is inherited with no opt-out and the card `AgentSlug` is overwritten as the run
-starts); passing `notion_task_id` to an standalone dispatch; putting a standalone slug in a
-card's `AgentSlug`; `invoke_kanban_agent`, `handoff_kanban_card` or the Ready
-sweep with a standalone slug; setting a standalone slug as the workspace default Coder.
-
-Check after dispatch: `get_run` on the returned run (or each `child_run_ids`
-entry) must show `notion_task_id` null. Nothing enforces this in v1 (a hard
-guard is a platform change, tracked separately). Standalone runs have no safety net: a
-run that does nothing still ends as success, so the caller judges the result.
-Each model bump must be made in both the coder and its standalone twin.
