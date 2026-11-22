@@ -57,11 +57,14 @@ comment that quotes it.
   pins the SHA; this repo's `master` rules may require no status checks, so
   GitHub will not stop a premature merge. Before merging, on the CURRENT head
   sha, confirm all of these yourself:
-  1. `devteam/code-review` is `success` and `devteam/merge-eligible` is
-     `success` (`gh api repos/<owner>/<repo>/commits/<head_sha>/status`).
-  2. A review actually ran for this head in this attempt (the statuses carry
-     the head sha, not an earlier one) and no `devteam:review-exhausted` /
-     `devteam/review-cap` failure is open.
+  1. `devteam/code-review`, `devteam/merge-eligible`, and
+     `devteam/provenance` are all `success`
+     (`gh api repos/<owner>/<repo>/commits/<head_sha>/status`).
+  2. Both review statuses have the same non-empty `target_url`, which
+     identifies the clearance attempt. This can be a completed review or the
+     v2 bypass described in section 4. Stop if the PR has the
+     `devteam:review-exhausted` label or this head has a failing
+     `devteam/review-cap` status.
   3. Required CI on that sha is green (latest `gh run list` entry per
      workflow, not the `gh pr checks` rollup).
   Then `gh pr merge <n> --squash --match-head-commit <head_sha>`. Never an
