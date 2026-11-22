@@ -53,9 +53,21 @@ comment that quotes it.
   twice for the same head, never if the PR carries `devteam:review-exhausted`.
 - **Fixed nothing (every finding declined or deferred):** there is nothing to
   push, so see section 4 before you do anything.
-- **Merge** when the rules allow it (section 4): `gh pr merge <n> --squash
-  --match-head-commit <head_sha>`. Never an admin override or bypass. If GitHub
-  refuses, report the refusal on the card instead of forcing it.
+- **Merge** when the rules allow it (section 4). `--match-head-commit` only
+  pins the SHA; this repo's `master` rules may require no status checks, so
+  GitHub will not stop a premature merge. Before merging, on the CURRENT head
+  sha, confirm all of these yourself:
+  1. `devteam/code-review` is `success` and `devteam/merge-eligible` is
+     `success` (`gh api repos/<owner>/<repo>/commits/<head_sha>/status`).
+  2. A review actually ran for this head in this attempt (the statuses carry
+     the head sha, not an earlier one) and no `devteam:review-exhausted` /
+     `devteam/review-cap` failure is open.
+  3. Required CI on that sha is green (latest `gh run list` entry per
+     workflow, not the `gh pr checks` rollup).
+  Then `gh pr merge <n> --squash --match-head-commit <head_sha>`. Never an
+  admin override or bypass. If any item is missing or red, do not merge:
+  push a new head or report on the card. If GitHub refuses, report the refusal
+  instead of forcing it.
 - After merge: sync the tree, hand to QA per the PR-first flow, close the card.
 
 ## 4. Mechanics of the v2 gate (verified against aw-shared-workflows `code-review-reusable.yml`, `lifecycle: v2`)
