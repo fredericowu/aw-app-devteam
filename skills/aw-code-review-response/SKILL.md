@@ -8,7 +8,7 @@ description: How a Coder acts on a reviewed PR - judge every review finding agai
 The wake prompt that sent you here is short on purpose: a PR url plus the
 PR-specific facts (wake n of max, stored findings, the reason). **Every rule
 lives in this skill, not in the prompt.** If a prompt and this skill seem to
-disagree, this skill wins.
+disagree, this skill wins, with ONE exception: the `/aw-review` exception below.
 
 ## 1. You decide, the reviewer advises
 
@@ -47,6 +47,10 @@ comment that quotes it.
 
 - **Pushed a fix:** a push retriggers the review automatically. Do NOT post
   `/aw-review`. Do NOT touch labels (`devteam:*` and `aw-run:*` are gate-owned).
+- **`/aw-review` exception:** when the wake prompt says the head has no review (an
+  unreviewed or no-passing-review head), a push alone cannot start the first review.
+  Then, and only then, post exactly one `/aw-review` after fixing what is red: never
+  twice for the same head, never if the PR carries `devteam:review-exhausted`.
 - **Fixed nothing (every finding declined or deferred):** there is nothing to
   push, so see section 4 before you do anything.
 - **Merge** when the rules allow it (section 4): `gh pr merge <n> --squash
