@@ -441,3 +441,20 @@ def test_the_shipped_skills_do_not_carry_monolith_paths(manifest):
         assert "awserv" not in text, skill["id"]
         assert "aw-knowledge-base" not in text, skill["id"]
         assert "ntn_" not in text, skill["id"]
+
+
+def test_code_review_response_skill_ships_and_holds_the_rules(manifest):
+    """Wake prompts are short and point here, so the rules must live in this
+    skill: the three reply options, the coder-can-merge rule, the no-/aw-review
+    rule and the escalation path."""
+    entry = next(s for s in manifest["contributes"]["skills"]
+                 if s["id"] == "aw-code-review-response")
+    path = MANIFEST.parent / entry["path"]
+    text = path.read_text()
+    assert text.startswith("---\nname: aw-code-review-response\ndescription: ")
+    for needle in ("(a) **Handled in this PR**", "(b) **Handled by another card**",
+                   "(c) **Won't do**", "You CAN merge", "do NOT need the reviewer to agree",
+                   "Do NOT post\n  `/aw-review`", "Mode B PR-shaped work order",
+                   "--force-with-lease"):
+        assert needle in text, needle
+    assert "aw-code-review-response" in (MANIFEST.parent / "prompts/coders-group.md").read_text()
