@@ -460,3 +460,24 @@ def test_code_review_response_skill_ships_and_holds_the_rules(manifest):
                    "Required CI on that sha is green"):
         assert needle in text, needle
     assert "aw-code-review-response" in (MANIFEST.parent / "prompts/coders-group.md").read_text()
+
+
+def test_code_review_pipeline_is_persisted_in_code(spec):
+    """The CI deep-review path must be declared here, not hand-edited live.
+
+    A hand-edited live agent drifts from (or is silently reconciled against)
+    this manifest, so the reviewer model, the enabled flag and the workflow
+    all live in code. The reviewer runs the real prompt and skill on the
+    Terra codex runner, and carries no `temperature` (the model 400s on it).
+    """
+    agent = next(a for a in spec["agents"] if a["slug"] == "code-reviewer-pipeline")
+    assert agent["model_slug"] == "codex-runner-gpt-6-1-terra"
+    assert agent["system_prompt_file"] == "prompts/code-reviewer.md"
+    assert "aw-agent-code-reviewer" in agent["skill_slugs"]
+    assert "temperature" not in (agent.get("params") or {})
+
+    wf = next(w for w in spec["workflows"] if w["slug"] == "code-review-pipeline")
+    assert wf["graph"]["flags"]["code_reviewer_enabled"] is True
+    nodes = {n["id"]: n for n in wf["graph"]["nodes"]}
+    assert nodes["gate"]["flag"] == "code_reviewer_enabled"
+    assert nodes["review"]["agent"] == "code-reviewer-pipeline"

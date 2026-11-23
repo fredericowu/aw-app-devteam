@@ -469,7 +469,7 @@
           "name": "Code Reviewer - Pipeline",
           "description": "A CI-dispatched PR reviewer: identical review contract to Code Reviewer - Sonnet (same prompt, same skill) but deliberately NOT a node in any Agents Flow. Dispatched one-shot through AP-MT's /v1 door by GitHub CI with no Kanban card and no caller session; posts its JSON verdict and stops. Never add this agent (or a group node with group_slug \"devteam\") to a flow graph \u2014 the split exists so flow reprompt/escalation never fires for CI reviews.",
           "system_prompt_file": "prompts/code-reviewer.md",
-          "model_slug": "claude-runner-sonnet",
+          "model_slug": "codex-runner-gpt-6-1-terra",
           "disable_harness_tools": true,
           "agent_config_slug": "devteam-config",
           "group_slug": "devteam",
@@ -507,6 +507,41 @@
           "hidden_from_flow": true,
           "icon": "search",
           "color": "#8b949e"
+        }
+      ],
+      "workflows": [
+        {
+          "slug": "code-review-pipeline",
+          "name": "Code Review Workflow",
+          "description": "CI-dispatched PR deep code review using Code Reviewer - Pipeline.",
+          "use_cases": [
+            "CI-dispatched PR deep code review",
+            "Review a pull request diff from GitHub Actions"
+          ],
+          "kind": "dag",
+          "graph": {
+            "flags": {
+              "code_reviewer_enabled": true
+            },
+            "nodes": [
+              {
+                "id": "gate",
+                "kind": "gate",
+                "label": "Reviewer enabled?",
+                "flag": "code_reviewer_enabled",
+                "stop_output": "{\"findings\": [], \"counts\": {}}"
+              },
+              {
+                "id": "review",
+                "agent": "code-reviewer-pipeline",
+                "needs": [
+                  "gate"
+                ],
+                "label": "Code Reviewer - Pipeline",
+                "input_template": "{input}"
+              }
+            ]
+          }
         }
       ],
       "agent_flows": [
