@@ -21,6 +21,9 @@ erased by an upgrade. Therefore:
   slug, the live-row fingerprint it was reviewed against, and the exact
   manifest values to write (all fields, prompt included). Any drift in the live
   row or the manifest voids it; a changed row needs a fresh approval.
+* Every write goes through an atomic compare-and-set provider method
+  (``CONDITIONAL_WRITE``). A row edited between review and write is never
+  overwritten. A provider without it gets zero writes (manual fallback).
 """
 
 from __future__ import annotations
@@ -37,6 +40,11 @@ log = logging.getLogger("aw_apps.devteam")
 AGENT_SLUG = "code-reviewer-pipeline"
 APP_DATA_DIR = "aw-app-devteam"
 APPROVAL_FILE = "restore-approval.json"
+
+#: Provider method that applies ``changes`` only if the live row still equals
+#: ``expected`` (compare-and-set, atomic on the platform side). The platform's
+#: plain PUT is unconditional, so without this the transition never writes.
+CONDITIONAL_WRITE = "update_contributed_agent_if_unchanged"
 
 #: Fields compared against the manifest. ``workspace`` is part of the row.
 _TARGET_FIELDS = ("model_slug", "params", "skill_slugs", "system_prompt", "workspace")
@@ -158,8 +166,8 @@ def apply_stub_transition(provider: Any, package_dir: str,
     the complete manifest state for the row; never a partial update.
     """
     read = getattr(provider, "read_contributed_agent", None)
-    write = getattr(provider, "update_contributed_agent", None)
-    if read is None or write is None:
+    write = getattr(provider, CONDITIONAL_WRITE, None)
+    if read is None:
         return {}
     desired = desired_agent(package_dir)
     if desired is None:
@@ -192,8 +200,15 @@ def apply_stub_transition(provider: Any, package_dir: str,
         approval_used = path
         reason = "operator approval by " + str(approval["approved_by"])
     changes = {f: desired[f] for f in _TARGET_FIELDS}
-    # The platform PUT is unconditional, so re-read right before writing and
-    # require the same row that was approved (narrows the race to one request).
+    if write is None:
+        # The platform PUT is unconditional, so any write here could overwrite an
+        # edit made after the row was reviewed. No atomic write: manual fallback.
+        log.warning(
+            "devteam transition: %s is authorized for restore (%s) but the provider "
+            "has no atomic conditional write; zero writes. Apply the manifest values "
+            "by hand (see docs/stub-restore.md). live_fingerprint=%s",
+            AGENT_SLUG, reason, live_fp)
+        return {}
     recheck = read("agents", AGENT_SLUG)
     if not recheck:
         return None
@@ -201,7 +216,8 @@ def apply_stub_transition(provider: Any, package_dir: str,
         log.warning("devteam transition: %s changed while restoring; no write, "
                     "fresh review needed", AGENT_SLUG)
         return {}
-    if write("agents", AGENT_SLUG, changes) is False:
+    # Early exit only; the write itself is conditional on the exact row read above.
+    if write("agents", AGENT_SLUG, changes, expected=recheck) is False:
         log.warning("devteam transition: write failed for %s", AGENT_SLUG)
         raise RuntimeError(f"provider rejected the update of {AGENT_SLUG}")
     if approval_used:
