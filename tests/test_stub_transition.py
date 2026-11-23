@@ -10,7 +10,7 @@ from pathlib import Path
 APP_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(APP_DIR))
 
-from devteam_app import transitions  # noqa: E402
+import importlib; transitions = importlib.import_module("devteam_app.transitions")  # noqa: E402
 
 STUB = {
     "slug": "code-reviewer-pipeline",
@@ -142,3 +142,10 @@ def test_null_workspace_stub_gets_a_workspace_with_the_model_change():
     changes = transitions.apply_stub_transition(prov, str(APP_DIR))
     assert changes["workspace"] == "aw"
     assert prov.live["workspace"] == "aw"
+
+
+def test_plugin_imports_as_a_package_member_not_by_absolute_name():
+    # Core loads the plugin from the installed app dir; an absolute
+    # `from devteam_app...` import broke activation in v0.36.0.
+    src = (APP_DIR / "devteam_app" / "plugin.py").read_text()
+    assert "from devteam_app" not in src and "import devteam_app" not in src

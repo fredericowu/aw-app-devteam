@@ -32,7 +32,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from devteam_app.transitions import apply_stub_transition
+from .transitions import apply_stub_transition
 
 log = logging.getLogger("aw_apps.devteam")
 
