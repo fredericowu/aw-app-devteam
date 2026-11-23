@@ -29,9 +29,15 @@ slug, or an edit in the UI.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
+from devteam_app.transitions import apply_stub_transition
+
 log = logging.getLogger("aw_apps.devteam")
+
+RETRY_ATTEMPTS = 20
+RETRY_DELAY_S = 30
 
 
 class DevTeamAppPlugin:
@@ -46,10 +52,41 @@ class DevTeamAppPlugin:
         # The contribution registries run from the framework's own activation
         # path, not from here — an app declares, the runtime dispatches. All
         # this needs to do is come up cleanly so that dispatch happens.
+        self._retry_task = asyncio.ensure_future(self._transition_loop())
         log.info(
             "aw-app-devteam active — agents, skills and the software-engineering "
             "flow are seeded by the workspace from aw-app.json's contributes block"
         )
 
+    async def _transition_loop(self) -> None:
+        """Try now, then keep retrying (bounded) until the agents provider is
+        loaded and the transition has been evaluated. Each attempt runs in a
+        worker thread: the provider's HTTP client is synchronous."""
+        for _ in range(RETRY_ATTEMPTS):
+            if await asyncio.to_thread(self._run_transitions):
+                return
+            await asyncio.sleep(RETRY_DELAY_S)
+
+    def _run_transitions(self) -> bool:
+        """Apply fingerprint-scoped upgrade transitions (see transitions.py).
+
+        Never fails activation: a transition that can't run (no agents
+        provider loaded yet, platform unreachable) is retried on the next one.
+        """
+        try:
+            from src.apps.agents import AgentsRegistry  # in-process app: core is importable
+
+            provider = AgentsRegistry.find_provider(self.ctx._runtime)
+            if provider is None:
+                return False
+            apply_stub_transition(provider, self.ctx.package_dir)
+            return True
+        except Exception:  # noqa: BLE001
+            log.exception("devteam upgrade transition failed")
+            return False
+
     async def deactivate(self) -> None:
+        task = getattr(self, "_retry_task", None)
+        if task is not None:
+            task.cancel()
         log.info("aw-app-devteam deactivated")
