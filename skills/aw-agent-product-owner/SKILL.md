@@ -111,9 +111,10 @@ coder, QA or architect. You decide; do not hand the question back.
 - **Leave Manager-parked show-stoppers alone.** A card the Manager parked
   for infrastructure, access or an outage already carries its own wall,
   evidence and unblock action; do not re-decide or move it.
-- **Parked cards come back.** A parked card returns to the sweep after 24
-  hours idle, and a human answer exits it earlier. Write the comment so the
-  next reader can tell whether the blocker is still true.
+- **Parked cards come back.** A parked card returns to the sweep for
+  revalidation once it has been idle 24 hours. Do not rely on a human
+  reply being noticed earlier. Write the comment so the next reader can
+  tell whether the blocker is still true.
 - **Close obsolete work.** When the work is no longer wanted or is already
   done by other means, close a bound card with `mark_flow_done` outcome
   `success` and `qa_not_needed=true`, and state why in the summary.
