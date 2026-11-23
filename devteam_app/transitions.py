@@ -46,8 +46,23 @@ def _norm(field: str, value: Any) -> Any:
     return value
 
 
+#: The original stub prompt text is not recoverable (it was hand-typed into the
+#: live agent and never committed), so it cannot be fingerprinted by hash. The
+#: stand-in: a stub prompt is a short approve-only blurb that never references
+#: the reviewer skill; a hand-written real prompt is long or names the skill.
+_STUB_PROMPT_MAX_CHARS = 800
+_SKILL_MARKER = "aw-agent-code-reviewer"
+
+
+def _prompt_looks_like_stub(prompt: Any) -> bool:
+    text = prompt or ""
+    return len(text) <= _STUB_PROMPT_MAX_CHARS and _SKILL_MARKER not in text
+
+
 def matches_known_stub(live: dict[str, Any], desired: dict[str, Any]) -> bool:
     """True only for a known stub that is not already the desired state."""
+    if not _prompt_looks_like_stub(live.get("system_prompt")):
+        return False
     if all(_norm(f, live.get(f)) == _norm(f, desired.get(f)) for f in _TARGET_FIELDS):
         return False
     return any(
@@ -60,13 +75,18 @@ def desired_agent(package_dir: str) -> dict[str, Any] | None:
     """The manifest's declared ``code-reviewer-pipeline`` entry, prompt inlined."""
     with open(os.path.join(package_dir, "aw-app.json"), encoding="utf-8") as fh:
         manifest = json.load(fh)
-    for entry in manifest["contributes"]["agents"]["agents"]:
+    agents = manifest["contributes"]["agents"]["agents"]
+    # Same workspace the sibling reviewer agents declare: a model_slug update
+    # on a null-workspace row is rejected (422) on a multi-runner tenant.
+    workspace = next((a["workspace"] for a in agents if a.get("workspace")), None)
+    for entry in agents:
         if entry.get("slug") != AGENT_SLUG:
             continue
         out = {
             "model_slug": entry.get("model_slug"),
             "params": entry.get("params") or {},
             "skill_slugs": entry.get("skill_slugs") or [],
+            "workspace": entry.get("workspace") or workspace,
         }
         prompt_file = entry.get("system_prompt_file")
         if prompt_file:
@@ -95,6 +115,8 @@ def apply_stub_transition(provider: Any, package_dir: str) -> dict[str, Any]:
         return {}
     changes = {f: desired[f] for f in _TARGET_FIELDS
                if _norm(f, live.get(f)) != _norm(f, desired.get(f))}
+    if not live.get("workspace") and desired.get("workspace"):
+        changes["workspace"] = desired["workspace"]
     if write("agents", AGENT_SLUG, changes) is False:
         log.warning("devteam transition: write failed for %s", AGENT_SLUG)
         return {}

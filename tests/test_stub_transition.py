@@ -44,7 +44,7 @@ def test_stub_is_upgraded_to_the_manifest_reviewer():
     assert prov.live["skill_slugs"] == ["aw-agent-code-reviewer"]
     assert prov.live["system_prompt"] == desired["system_prompt"]
     assert "approve" not in prov.live["system_prompt"].lower()[:40]
-    assert set(changes) == {"model_slug", "params", "skill_slugs", "system_prompt"}
+    assert set(changes) == {"model_slug", "params", "skill_slugs", "system_prompt", "workspace"}
 
 
 def test_second_run_is_a_noop():
@@ -87,5 +87,58 @@ def test_plugin_activation_runs_the_transition(monkeypatch):
     from devteam_app.plugin import DevTeamAppPlugin
 
     ctx = types.SimpleNamespace(_runtime=object(), package_dir=str(APP_DIR))
-    asyncio.run(DevTeamAppPlugin().activate(ctx))
+    async def go():
+        plugin = DevTeamAppPlugin()
+        await plugin.activate(ctx)
+        await plugin._retry_task
+
+    asyncio.run(go())
     assert prov.live["model_slug"] == "codex-runner-gpt-6-1-terra"
+
+
+def test_transition_retries_until_the_provider_appears(monkeypatch):
+    import asyncio
+    import types
+
+    prov = FakeProvider(STUB)
+    calls = {"n": 0}
+
+    class Registry:
+        @staticmethod
+        def find_provider(runtime):
+            calls["n"] += 1
+            return prov if calls["n"] >= 3 else None
+
+    mod = types.ModuleType("src.apps.agents")
+    mod.AgentsRegistry = Registry
+    monkeypatch.setitem(sys.modules, "src", types.ModuleType("src"))
+    monkeypatch.setitem(sys.modules, "src.apps", types.ModuleType("src.apps"))
+    monkeypatch.setitem(sys.modules, "src.apps.agents", mod)
+    from devteam_app import plugin as plugin_mod
+
+    monkeypatch.setattr(plugin_mod, "RETRY_DELAY_S", 0)
+    ctx = types.SimpleNamespace(_runtime=object(), package_dir=str(APP_DIR))
+
+    async def go():
+        p = plugin_mod.DevTeamAppPlugin()
+        await p.activate(ctx)
+        await p._retry_task
+
+    asyncio.run(go())
+    assert calls["n"] == 3
+    assert prov.live["model_slug"] == "codex-runner-gpt-6-1-terra"
+
+
+def test_stub_shape_with_a_custom_real_prompt_is_left_alone():
+    custom = dict(STUB, system_prompt="Review carefully. " * 100)
+    prov = FakeProvider(custom)
+    assert transitions.apply_stub_transition(prov, str(APP_DIR)) == {}
+    named = dict(STUB, system_prompt="Use skill aw-agent-code-reviewer, my way.")
+    assert transitions.apply_stub_transition(FakeProvider(named), str(APP_DIR)) == {}
+
+
+def test_null_workspace_stub_gets_a_workspace_with_the_model_change():
+    prov = FakeProvider(dict(STUB, workspace=None))
+    changes = transitions.apply_stub_transition(prov, str(APP_DIR))
+    assert changes["workspace"] == "aw"
+    assert prov.live["workspace"] == "aw"
