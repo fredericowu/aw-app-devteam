@@ -13,6 +13,13 @@ erased. On activation (`devteam_app/transitions.py`):
 | Differs, operator approval matches | whole manifest row written (all five fields, prompt included) |
 | Approval exists but the row or the manifest changed since | zero writes; a fresh approval is needed |
 
+Writes use an atomic compare-and-set provider method
+(`update_contributed_agent_if_unchanged`, expected row = the reviewed row). The
+platform's plain PUT is unconditional, so a provider without it gets **zero
+writes** and a warning; apply the manifest values by hand (the manual
+alternative below). An edit landing between review and write makes the
+conditional write fail: the row is untouched and a fresh approval is needed.
+
 A rejected write (HTTP 422, etc.) leaves the row untouched and is retried by
 the plugin's loop and on the next activation while the approval still matches.
 

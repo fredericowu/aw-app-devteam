@@ -35,6 +35,11 @@ class FakeProvider:
         self.live.update(copy.deepcopy(changes))
         return True
 
+    def update_contributed_agent_if_unchanged(self, kind, slug, changes, expected):
+        if self.live != expected:
+            return False
+        return self.update_contributed_agent(kind, slug, changes)
+
 
 import pytest
 
@@ -369,3 +374,50 @@ def test_unreadable_agent_after_a_rejected_write_keeps_retrying(monkeypatch, tru
 
     asyncio.run(go())
     assert prov.live["model_slug"] == "codex-runner-gpt-6-1-terra"
+
+
+def test_edit_between_second_read_and_put_is_never_overwritten(tmp_path):
+    """QA repro: provider returns the approved snapshot on the 2nd read while an
+    actor edits system_prompt before the PUT. Zero writes, edit intact."""
+
+    class Edit(FakeProvider):
+        def __init__(self, live):
+            super().__init__(live)
+            self.reads = 0
+            self.puts = []
+
+        def read_contributed_agent(self, kind, slug):
+            self.reads += 1
+            snap = copy.deepcopy(self.live)
+            if self.reads == 2:  # edit lands after the (approved-looking) 2nd read
+                self.live["system_prompt"] = "Edited after approval."
+            return snap
+
+        def update_contributed_agent(self, kind, slug, changes):
+            self.puts.append(changes)
+            return super().update_contributed_agent(kind, slug, changes)
+
+    prov = Edit(QA_FIXTURE)
+    approval = _approve(prov, tmp_path)
+    with pytest.raises(RuntimeError):  # CAS refused: retry-eligible, needs fresh approval
+        transitions.apply_stub_transition(prov, str(APP_DIR), approval_file=approval)
+    assert prov.puts == [] and prov.live["system_prompt"] == "Edited after approval."
+    assert os.path.exists(approval)
+
+
+def test_provider_without_atomic_write_gets_zero_writes(tmp_path, caplog):
+    class Plain:
+        def __init__(self):
+            self.inner = FakeProvider(QA_FIXTURE)
+            self.live = self.inner.live
+
+        def read_contributed_agent(self, kind, slug):
+            return self.inner.read_contributed_agent(kind, slug)
+
+        def update_contributed_agent(self, kind, slug, changes):
+            raise AssertionError("unconditional PUT must not be used")
+
+    prov = Plain()
+    approval = _approve(prov, tmp_path)
+    assert transitions.apply_stub_transition(prov, str(APP_DIR), approval_file=approval) == {}
+    assert prov.live == QA_FIXTURE and os.path.exists(approval)
