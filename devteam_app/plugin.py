@@ -81,7 +81,7 @@ class DevTeamAppPlugin:
                 return False
             apply_stub_transition(provider, self.ctx.package_dir)
             return True
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001  (includes a rejected write: retried)
             log.exception("devteam upgrade transition failed")
             return False
 

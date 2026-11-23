@@ -48,15 +48,21 @@ def _norm(field: str, value: Any) -> Any:
 
 #: The original stub prompt text is not recoverable (it was hand-typed into the
 #: live agent and never committed), so it cannot be fingerprinted by hash. The
-#: stand-in: a stub prompt is a short approve-only blurb that never references
-#: the reviewer skill; a hand-written real prompt is long or names the skill.
+#: stand-in: an approve-only stub is a short blurb that says "approve" and never
+#: references the reviewer skill. A short custom prompt that does not say
+#: "approve" (e.g. "Review for regressions.") is a real hand edit and is kept.
 _STUB_PROMPT_MAX_CHARS = 800
 _SKILL_MARKER = "aw-agent-code-reviewer"
+_STUB_WORD = "approve"
 
 
 def _prompt_looks_like_stub(prompt: Any) -> bool:
     text = prompt or ""
-    return len(text) <= _STUB_PROMPT_MAX_CHARS and _SKILL_MARKER not in text
+    return (
+        len(text) <= _STUB_PROMPT_MAX_CHARS
+        and _SKILL_MARKER not in text
+        and _STUB_WORD in text.lower()
+    )
 
 
 def matches_known_stub(live: dict[str, Any], desired: dict[str, Any]) -> bool:
@@ -101,7 +107,9 @@ def desired_agent(package_dir: str) -> dict[str, Any] | None:
 def apply_stub_transition(provider: Any, package_dir: str) -> dict[str, Any]:
     """Move a known stub ``code-reviewer-pipeline`` to the manifest's state.
 
-    Returns the changes written (``{}`` for a correct no-op).
+    Returns the changes written (``{}`` for a correct no-op). Raises
+    ``RuntimeError`` when the provider rejects the write, so the caller keeps
+    the transition eligible for a retry.
     """
     read = getattr(provider, "read_contributed_agent", None)
     write = getattr(provider, "update_contributed_agent", None)
@@ -119,7 +127,7 @@ def apply_stub_transition(provider: Any, package_dir: str) -> dict[str, Any]:
         changes["workspace"] = desired["workspace"]
     if write("agents", AGENT_SLUG, changes) is False:
         log.warning("devteam transition: write failed for %s", AGENT_SLUG)
-        return {}
+        raise RuntimeError(f"provider rejected the update of {AGENT_SLUG}")
     log.info("devteam transition: moved stub %s to manifest state (%s)",
              AGENT_SLUG, ", ".join(sorted(changes)))
     return changes

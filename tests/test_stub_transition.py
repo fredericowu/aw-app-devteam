@@ -149,3 +149,59 @@ def test_plugin_imports_as_a_package_member_not_by_absolute_name():
     # `from devteam_app...` import broke activation in v0.36.0.
     src = (APP_DIR / "devteam_app" / "plugin.py").read_text()
     assert "from devteam_app" not in src and "import devteam_app" not in src
+
+
+def test_short_custom_prompt_with_stub_shape_is_left_alone():
+    custom = dict(STUB, system_prompt="Review for regressions. Flag risky changes.")
+    prov = FakeProvider(custom)
+    assert transitions.apply_stub_transition(prov, str(APP_DIR)) == {}
+    assert prov.writes == []
+
+
+def test_rejected_write_raises_and_the_plugin_retries(monkeypatch):
+    import asyncio
+    import pytest
+
+    class Rejecting(FakeProvider):
+        def __init__(self, live):
+            super().__init__(live)
+            self.fail = True
+
+        def update_contributed_agent(self, kind, slug, changes):
+            if self.fail:
+                self.fail = False
+                return False
+            return super().update_contributed_agent(kind, slug, changes)
+
+    with pytest.raises(RuntimeError):
+        transitions.apply_stub_transition(Rejecting(STUB), str(APP_DIR))
+
+    import types
+
+    prov = Rejecting(STUB)
+    attempts = {"n": 0}
+
+    class Registry:
+        @staticmethod
+        def find_provider(runtime):
+            attempts["n"] += 1
+            return prov
+
+    mod = types.ModuleType("src.apps.agents")
+    mod.AgentsRegistry = Registry
+    monkeypatch.setitem(sys.modules, "src", types.ModuleType("src"))
+    monkeypatch.setitem(sys.modules, "src.apps", types.ModuleType("src.apps"))
+    monkeypatch.setitem(sys.modules, "src.apps.agents", mod)
+    from devteam_app import plugin as plugin_mod
+
+    monkeypatch.setattr(plugin_mod, "RETRY_DELAY_S", 0)
+    ctx = types.SimpleNamespace(_runtime=object(), package_dir=str(APP_DIR))
+
+    async def go():
+        p = plugin_mod.DevTeamAppPlugin()
+        await p.activate(ctx)
+        await p._retry_task
+
+    asyncio.run(go())
+    assert attempts["n"] == 2
+    assert prov.live["model_slug"] == "codex-runner-gpt-6-1-terra"
