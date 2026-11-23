@@ -65,7 +65,7 @@ def test_other_hand_edits_are_left_alone():
 
 
 def test_missing_agent_is_a_noop():
-    assert transitions.apply_stub_transition(FakeProvider(None), str(APP_DIR)) == {}
+    assert transitions.apply_stub_transition(FakeProvider(None), str(APP_DIR)) is None
 
 
 def test_plugin_activation_runs_the_transition(monkeypatch):
@@ -204,4 +204,58 @@ def test_rejected_write_raises_and_the_plugin_retries(monkeypatch):
 
     asyncio.run(go())
     assert attempts["n"] == 2
+    assert prov.live["model_slug"] == "codex-runner-gpt-6-1-terra"
+
+
+def test_conditional_custom_prompt_with_stub_shape_is_left_alone():
+    custom = dict(STUB, system_prompt="Review the diff and approve only if all tests pass.")
+    prov = FakeProvider(custom)
+    assert transitions.apply_stub_transition(prov, str(APP_DIR)) == {}
+    assert prov.writes == []
+
+
+def test_unreadable_agent_after_a_rejected_write_keeps_retrying(monkeypatch):
+    import asyncio
+    import types
+
+    class Flaky(FakeProvider):
+        def __init__(self, live):
+            super().__init__(live)
+            self.reads = 0
+
+        def read_contributed_agent(self, kind, slug):
+            self.reads += 1
+            if self.reads == 2:  # retry GET after the rejected PUT: 503 -> None
+                return None
+            return super().read_contributed_agent(kind, slug)
+
+        def update_contributed_agent(self, kind, slug, changes):
+            if not self.writes:
+                self.writes.append(changes)
+                return False
+            return super().update_contributed_agent(kind, slug, changes)
+
+    prov = Flaky(STUB)
+
+    class Registry:
+        @staticmethod
+        def find_provider(runtime):
+            return prov
+
+    mod = types.ModuleType("src.apps.agents")
+    mod.AgentsRegistry = Registry
+    monkeypatch.setitem(sys.modules, "src", types.ModuleType("src"))
+    monkeypatch.setitem(sys.modules, "src.apps", types.ModuleType("src.apps"))
+    monkeypatch.setitem(sys.modules, "src.apps.agents", mod)
+    from devteam_app import plugin as plugin_mod
+
+    monkeypatch.setattr(plugin_mod, "RETRY_DELAY_S", 0)
+    ctx = types.SimpleNamespace(_runtime=object(), package_dir=str(APP_DIR))
+
+    async def go():
+        p = plugin_mod.DevTeamAppPlugin()
+        await p.activate(ctx)
+        await p._retry_task
+
+    asyncio.run(go())
     assert prov.live["model_slug"] == "codex-runner-gpt-6-1-terra"

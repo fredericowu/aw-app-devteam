@@ -79,7 +79,8 @@ class DevTeamAppPlugin:
             provider = AgentsRegistry.find_provider(self.ctx._runtime)
             if provider is None:
                 return False
-            apply_stub_transition(provider, self.ctx.package_dir)
+            if apply_stub_transition(provider, self.ctx.package_dir) is None:
+                return False  # live agent unreadable: retry, do not assume a no-op
             return True
         except Exception:  # noqa: BLE001  (includes a rejected write: retried)
             log.exception("devteam upgrade transition failed")

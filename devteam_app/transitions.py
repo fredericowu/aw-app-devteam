@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from typing import Any
 
 log = logging.getLogger("aw_apps.devteam")
@@ -48,12 +49,17 @@ def _norm(field: str, value: Any) -> Any:
 
 #: The original stub prompt text is not recoverable (it was hand-typed into the
 #: live agent and never committed), so it cannot be fingerprinted by hash. The
-#: stand-in: an approve-only stub is a short blurb that says "approve" and never
-#: references the reviewer skill. A short custom prompt that does not say
-#: "approve" (e.g. "Review for regressions.") is a real hand edit and is kept.
-_STUB_PROMPT_MAX_CHARS = 800
+#: stand-in is deliberately narrow: a stub is a short, approve-only blurb. Any
+#: prompt that is long, names the reviewer skill, or carries a condition,
+#: criterion or review instruction is a real hand edit and is never rewritten.
+_STUB_PROMPT_MAX_CHARS = 200
 _SKILL_MARKER = "aw-agent-code-reviewer"
 _STUB_WORD = "approve"
+_NOT_A_STUB_WORDS = re.compile(
+    r"\b(if|only|unless|when|whenever|except|but|test|tests|diff|review|check|"
+    r"reject|fail|flag|block|regression|regressions|risk|risky|bug|bugs)\b",
+    re.IGNORECASE,
+)
 
 
 def _prompt_looks_like_stub(prompt: Any) -> bool:
@@ -62,6 +68,7 @@ def _prompt_looks_like_stub(prompt: Any) -> bool:
         len(text) <= _STUB_PROMPT_MAX_CHARS
         and _SKILL_MARKER not in text
         and _STUB_WORD in text.lower()
+        and not _NOT_A_STUB_WORDS.search(text)
     )
 
 
@@ -104,10 +111,12 @@ def desired_agent(package_dir: str) -> dict[str, Any] | None:
     return None
 
 
-def apply_stub_transition(provider: Any, package_dir: str) -> dict[str, Any]:
+def apply_stub_transition(provider: Any, package_dir: str) -> dict[str, Any] | None:
     """Move a known stub ``code-reviewer-pipeline`` to the manifest's state.
 
-    Returns the changes written (``{}`` for a correct no-op). Raises
+    Returns the changes written (``{}`` for a correct no-op) or ``None`` when
+    the live agent could not be read (absent or the platform is unreachable:
+    the provider cannot tell which, so the caller must retry). Raises
     ``RuntimeError`` when the provider rejects the write, so the caller keeps
     the transition eligible for a retry.
     """
@@ -119,7 +128,9 @@ def apply_stub_transition(provider: Any, package_dir: str) -> dict[str, Any]:
     if desired is None:
         return {}
     live = read("agents", AGENT_SLUG)
-    if not live or not matches_known_stub(live, desired):
+    if not live:
+        return None
+    if not matches_known_stub(live, desired):
         return {}
     changes = {f: desired[f] for f in _TARGET_FIELDS
                if _norm(f, live.get(f)) != _norm(f, desired.get(f))}
