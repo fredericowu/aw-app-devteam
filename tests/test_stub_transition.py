@@ -4,6 +4,7 @@ reviewer settings, but never overwrites any other hand edit."""
 from __future__ import annotations
 
 import copy
+import os
 import sys
 from pathlib import Path
 
@@ -35,40 +36,177 @@ class FakeProvider:
         return True
 
 
-def test_stub_is_upgraded_to_the_manifest_reviewer():
-    desired = transitions.desired_agent(str(APP_DIR))
-    prov = FakeProvider(STUB)
-    changes = transitions.apply_stub_transition(prov, str(APP_DIR))
-    assert prov.live["model_slug"] == "codex-runner-gpt-6-1-terra" == desired["model_slug"]
-    assert prov.live["params"] == {}
-    assert prov.live["skill_slugs"] == ["aw-agent-code-reviewer"]
-    assert prov.live["system_prompt"] == desired["system_prompt"]
-    assert "approve" not in prov.live["system_prompt"].lower()[:40]
-    assert set(changes) == {"model_slug", "params", "skill_slugs", "system_prompt", "workspace"}
+import pytest
 
 
-def test_second_run_is_a_noop():
-    prov = FakeProvider(STUB)
-    transitions.apply_stub_transition(prov, str(APP_DIR))
-    assert transitions.apply_stub_transition(prov, str(APP_DIR)) == {}
-    assert len(prov.writes) == 1
+@pytest.fixture
+def trust_stub(monkeypatch):
+    """Stand-in for trusted evidence so the plugin retry paths can be driven."""
+    monkeypatch.setattr(transitions, "TRUSTED_STUB_FINGERPRINTS",
+                        frozenset({transitions.fingerprint(STUB)}))
 
 
-def test_other_hand_edits_are_left_alone():
-    custom = dict(STUB, model_slug="claude-runner-opus")
-    prov = FakeProvider(custom)
-    assert transitions.apply_stub_transition(prov, str(APP_DIR)) == {}
+def _approve(prov, tmp_path, by="operator"):
+    path = str(tmp_path / "approval.json")
+    transitions.write_approval(path, transitions.fingerprint(prov.live), str(APP_DIR), by)
+    return path
+
+
+def _row_snapshot(prov):
+    return copy.deepcopy(prov.live)
+
+
+QA_FIXTURE = {
+    "slug": "code-reviewer-pipeline",
+    "model_slug": "gpt-6-1-terra",
+    "params": {"max_tokens": 200},
+    "skill_slugs": [],
+    "system_prompt": "Do not approve changes that remove authentication.",
+}
+
+
+def test_qa_old_model_fixture_gets_zero_writes(tmp_path):
+    prov = FakeProvider(QA_FIXTURE)
+    before = _row_snapshot(prov)
+    result = transitions.apply_stub_transition(
+        prov, str(APP_DIR), approval_file=str(tmp_path / "none.json"))
+    assert result == {}
     assert prov.writes == []
-    tuned = dict(STUB, params={"max_tokens": 4000})
-    prov = FakeProvider(tuned)
-    assert transitions.apply_stub_transition(prov, str(APP_DIR)) == {}
+    assert prov.live == before
+
+
+def test_stub_shaped_rows_are_ambiguous_zero_writes(tmp_path):
+    rows = [
+        STUB,  # prompt wording alone cannot prove it is the stub
+        dict(STUB, params={"temperature": 0, "max_tokens": 200}),
+        dict(STUB, model_slug="claude-runner-opus"),
+        dict(STUB, params={"max_tokens": 4000}),
+        dict(STUB, system_prompt="Review carefully. " * 100),
+        dict(STUB, system_prompt="Use skill aw-agent-code-reviewer, my way."),
+        dict(STUB, system_prompt="Review for regressions. Flag risky changes."),
+        dict(STUB, system_prompt="Review the diff and approve only if all tests pass."),
+        dict(STUB, workspace=None),
+    ]
+    for row in rows:
+        prov = FakeProvider(row)
+        before = _row_snapshot(prov)
+        assert transitions.apply_stub_transition(
+            prov, str(APP_DIR), approval_file=str(tmp_path / "none.json")) == {}
+        assert prov.writes == [] and prov.live == before
+
+
+def test_already_converged_reviewer_gets_zero_writes(tmp_path):
+    prov = FakeProvider(transitions.desired_agent(str(APP_DIR)))
+    assert transitions.apply_stub_transition(
+        prov, str(APP_DIR), approval_file=_approve(prov, tmp_path)) == {}
+    assert prov.writes == []
+
+
+def test_trusted_fingerprint_restores_the_whole_row(monkeypatch, tmp_path):
+    prov = FakeProvider(STUB)
+    monkeypatch.setattr(transitions, "TRUSTED_STUB_FINGERPRINTS",
+                        frozenset({transitions.fingerprint(STUB)}))
+    desired = transitions.desired_agent(str(APP_DIR))
+    changes = transitions.apply_stub_transition(
+        prov, str(APP_DIR), approval_file=str(tmp_path / "none.json"))
+    assert set(changes) == set(transitions._TARGET_FIELDS)
+    for f in transitions._TARGET_FIELDS:
+        assert prov.live[f] == desired[f]
+
+
+def test_no_trusted_fingerprint_ships_today():
+    assert transitions.TRUSTED_STUB_FINGERPRINTS == frozenset()
+
+
+def test_operator_approval_restores_the_complete_manifest_once(tmp_path):
+    prov = FakeProvider(QA_FIXTURE)
+    approval = _approve(prov, tmp_path)
+    desired = transitions.desired_agent(str(APP_DIR))
+    changes = transitions.apply_stub_transition(prov, str(APP_DIR), approval_file=approval)
+    assert set(changes) == {"model_slug", "params", "skill_slugs", "system_prompt", "workspace"}
+    for f in transitions._TARGET_FIELDS:
+        assert prov.live[f] == desired[f]
+    assert prov.live["model_slug"] == "codex-runner-gpt-6-1-terra"
+    assert prov.live["workspace"] == "aw"
+    assert transitions.apply_stub_transition(prov, str(APP_DIR), approval_file=approval) == {}
+    assert len(prov.writes) == 1
+    # approval is consumed: reverting the row by hand does not re-authorize a restore
+    prov.live.update(QA_FIXTURE)
+    assert transitions.apply_stub_transition(prov, str(APP_DIR), approval_file=approval) == {}
+    assert len(prov.writes) == 1 and not os.path.exists(approval)
+
+
+def test_row_changed_between_read_and_write_is_not_overwritten(tmp_path):
+    class Racy(FakeProvider):
+        def __init__(self, live):
+            super().__init__(live)
+            self.reads = 0
+
+        def read_contributed_agent(self, kind, slug):
+            self.reads += 1
+            if self.reads == 2:  # someone saves a new prompt after the first read
+                self.live["system_prompt"] = "A newer valid reviewer instruction."
+            return super().read_contributed_agent(kind, slug)
+
+    prov = Racy(QA_FIXTURE)
+    approval = _approve(prov, tmp_path)
+    assert transitions.apply_stub_transition(prov, str(APP_DIR), approval_file=approval) == {}
+    assert prov.writes == [] and prov.live["system_prompt"].startswith("A newer")
+
+
+def test_malformed_approval_fields_do_not_raise(tmp_path):
+    import json
+
+    prov = FakeProvider(QA_FIXTURE)
+    path = _approve(prov, tmp_path)
+    for bad in (42, [1, 2], None, "model_slug"):
+        doc = json.load(open(path)); doc["fields"] = bad
+        json.dump(doc, open(path, "w"))
+        assert transitions.apply_stub_transition(prov, str(APP_DIR), approval_file=path) == {}
+    assert prov.writes == []
+
+
+def test_approval_after_drift_or_for_a_different_row_writes_nothing(tmp_path):
+    prov = FakeProvider(QA_FIXTURE)
+    approval = _approve(prov, tmp_path)
+    prov.live["system_prompt"] = "Reject anything that weakens authentication."  # drift
+    before = _row_snapshot(prov)
+    assert transitions.apply_stub_transition(prov, str(APP_DIR), approval_file=approval) == {}
+    assert prov.writes == [] and prov.live == before
+
+
+def test_incomplete_or_stale_approval_writes_nothing(tmp_path):
+    import json
+
+    prov = FakeProvider(QA_FIXTURE)
+    path = _approve(prov, tmp_path)
+    doc = json.load(open(path))
+    for bad in (dict(doc, fields=["model_slug"]), dict(doc, values_fingerprint="0" * 64),
+                dict(doc, slug="other"), dict(doc, approved_by="")):
+        json.dump(bad, open(path, "w"))
+        assert transitions.apply_stub_transition(prov, str(APP_DIR), approval_file=path) == {}
+    open(path, "w").write("not json")
+    assert transitions.apply_stub_transition(prov, str(APP_DIR), approval_file=path) == {}
+    assert prov.writes == []
+
+
+def test_ambiguous_report_never_contains_prompt_text(tmp_path, caplog):
+    import logging
+
+    secret = "Do not approve changes that remove authentication."
+    prov = FakeProvider(dict(QA_FIXTURE, system_prompt=secret))
+    with caplog.at_level(logging.WARNING, logger="aw_apps.devteam"):
+        transitions.apply_stub_transition(
+            prov, str(APP_DIR), approval_file=str(tmp_path / "none.json"))
+    assert caplog.records and secret not in caplog.text
+    assert transitions.fingerprint(prov.live) in caplog.text
 
 
 def test_missing_agent_is_a_noop():
     assert transitions.apply_stub_transition(FakeProvider(None), str(APP_DIR)) is None
 
 
-def test_plugin_activation_runs_the_transition(monkeypatch):
+def test_plugin_activation_runs_the_transition(monkeypatch, trust_stub):
     import asyncio
     import types
 
@@ -96,7 +234,7 @@ def test_plugin_activation_runs_the_transition(monkeypatch):
     assert prov.live["model_slug"] == "codex-runner-gpt-6-1-terra"
 
 
-def test_transition_retries_until_the_provider_appears(monkeypatch):
+def test_transition_retries_until_the_provider_appears(monkeypatch, trust_stub):
     import asyncio
     import types
 
@@ -129,21 +267,6 @@ def test_transition_retries_until_the_provider_appears(monkeypatch):
     assert prov.live["model_slug"] == "codex-runner-gpt-6-1-terra"
 
 
-def test_stub_shape_with_a_custom_real_prompt_is_left_alone():
-    custom = dict(STUB, system_prompt="Review carefully. " * 100)
-    prov = FakeProvider(custom)
-    assert transitions.apply_stub_transition(prov, str(APP_DIR)) == {}
-    named = dict(STUB, system_prompt="Use skill aw-agent-code-reviewer, my way.")
-    assert transitions.apply_stub_transition(FakeProvider(named), str(APP_DIR)) == {}
-
-
-def test_null_workspace_stub_gets_a_workspace_with_the_model_change():
-    prov = FakeProvider(dict(STUB, workspace=None))
-    changes = transitions.apply_stub_transition(prov, str(APP_DIR))
-    assert changes["workspace"] == "aw"
-    assert prov.live["workspace"] == "aw"
-
-
 def test_plugin_imports_as_a_package_member_not_by_absolute_name():
     # Core loads the plugin from the installed app dir; an absolute
     # `from devteam_app...` import broke activation in v0.36.0.
@@ -151,14 +274,7 @@ def test_plugin_imports_as_a_package_member_not_by_absolute_name():
     assert "from devteam_app" not in src and "import devteam_app" not in src
 
 
-def test_short_custom_prompt_with_stub_shape_is_left_alone():
-    custom = dict(STUB, system_prompt="Review for regressions. Flag risky changes.")
-    prov = FakeProvider(custom)
-    assert transitions.apply_stub_transition(prov, str(APP_DIR)) == {}
-    assert prov.writes == []
-
-
-def test_rejected_write_raises_and_the_plugin_retries(monkeypatch):
+def test_rejected_write_raises_and_the_plugin_retries(monkeypatch, trust_stub):
     import asyncio
     import pytest
 
@@ -175,6 +291,7 @@ def test_rejected_write_raises_and_the_plugin_retries(monkeypatch):
 
     with pytest.raises(RuntimeError):
         transitions.apply_stub_transition(Rejecting(STUB), str(APP_DIR))
+    assert Rejecting(STUB).fail  # still eligible
 
     import types
 
@@ -207,14 +324,7 @@ def test_rejected_write_raises_and_the_plugin_retries(monkeypatch):
     assert prov.live["model_slug"] == "codex-runner-gpt-6-1-terra"
 
 
-def test_conditional_custom_prompt_with_stub_shape_is_left_alone():
-    custom = dict(STUB, system_prompt="Review the diff and approve only if all tests pass.")
-    prov = FakeProvider(custom)
-    assert transitions.apply_stub_transition(prov, str(APP_DIR)) == {}
-    assert prov.writes == []
-
-
-def test_unreadable_agent_after_a_rejected_write_keeps_retrying(monkeypatch):
+def test_unreadable_agent_after_a_rejected_write_keeps_retrying(monkeypatch, trust_stub):
     import asyncio
     import types
 
