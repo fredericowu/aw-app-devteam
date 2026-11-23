@@ -31,6 +31,8 @@ from __future__ import annotations
 
 import logging
 
+from devteam_app.transitions import apply_stub_transition
+
 log = logging.getLogger("aw_apps.devteam")
 
 
@@ -46,10 +48,26 @@ class DevTeamAppPlugin:
         # The contribution registries run from the framework's own activation
         # path, not from here — an app declares, the runtime dispatches. All
         # this needs to do is come up cleanly so that dispatch happens.
+        self._run_transitions()
         log.info(
             "aw-app-devteam active — agents, skills and the software-engineering "
             "flow are seeded by the workspace from aw-app.json's contributes block"
         )
+
+    def _run_transitions(self) -> None:
+        """Apply fingerprint-scoped upgrade transitions (see transitions.py).
+
+        Never fails activation: a transition that can't run (no agents
+        provider loaded yet, platform unreachable) is retried on the next one.
+        """
+        try:
+            from src.apps.agents import AgentsRegistry  # in-process app: core is importable
+
+            provider = AgentsRegistry.find_provider(self.ctx._runtime)
+            if provider is not None:
+                apply_stub_transition(provider, self.ctx.package_dir)
+        except Exception:  # noqa: BLE001
+            log.exception("devteam upgrade transition failed")
 
     async def deactivate(self) -> None:
         log.info("aw-app-devteam deactivated")
