@@ -126,7 +126,9 @@ def _approval_problem(approval: Any, live: dict[str, Any], desired: dict[str, An
         return "approval does not name " + AGENT_SLUG
     if not approval.get("approved_by"):
         return "approval has no approver"
-    if sorted(approval.get("fields") or []) != sorted(_TARGET_FIELDS):
+    fields = approval.get("fields")
+    if (not isinstance(fields, list) or not all(isinstance(f, str) for f in fields)
+            or sorted(fields) != sorted(_TARGET_FIELDS)):
         return "approval does not cover every field"
     if approval.get("values_fingerprint") != fingerprint(desired):
         return "manifest values changed since approval"
@@ -169,6 +171,7 @@ def apply_stub_transition(provider: Any, package_dir: str,
     if not differing:
         return {}
     live_fp = fingerprint(live)
+    approval_used = None
     if live_fp in TRUSTED_STUB_FINGERPRINTS:
         reason = "trusted stub fingerprint"
     else:
@@ -186,11 +189,26 @@ def apply_stub_transition(provider: Any, package_dir: str,
             log.warning("devteam transition: %s left untouched, approval not "
                         "applicable: %s (live_fingerprint=%s)", AGENT_SLUG, problem, live_fp)
             return {}
+        approval_used = path
         reason = "operator approval by " + str(approval["approved_by"])
     changes = {f: desired[f] for f in _TARGET_FIELDS}
+    # The platform PUT is unconditional, so re-read right before writing and
+    # require the same row that was approved (narrows the race to one request).
+    recheck = read("agents", AGENT_SLUG)
+    if not recheck:
+        return None
+    if fingerprint(recheck) != live_fp:
+        log.warning("devteam transition: %s changed while restoring; no write, "
+                    "fresh review needed", AGENT_SLUG)
+        return {}
     if write("agents", AGENT_SLUG, changes) is False:
         log.warning("devteam transition: write failed for %s", AGENT_SLUG)
         raise RuntimeError(f"provider rejected the update of {AGENT_SLUG}")
+    if approval_used:
+        try:  # one approval authorizes one restore; a rejected write keeps it
+            os.replace(approval_used, approval_used + ".applied")
+        except OSError:
+            log.warning("devteam transition: could not consume the approval file")
     log.info("devteam transition: restored %s to manifest state (%s; fields: %s)",
              AGENT_SLUG, reason, ", ".join(differing))
     return changes

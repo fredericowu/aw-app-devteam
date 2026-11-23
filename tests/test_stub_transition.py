@@ -4,6 +4,7 @@ reviewer settings, but never overwrites any other hand edit."""
 from __future__ import annotations
 
 import copy
+import os
 import sys
 from pathlib import Path
 
@@ -129,6 +130,40 @@ def test_operator_approval_restores_the_complete_manifest_once(tmp_path):
     assert prov.live["workspace"] == "aw"
     assert transitions.apply_stub_transition(prov, str(APP_DIR), approval_file=approval) == {}
     assert len(prov.writes) == 1
+    # approval is consumed: reverting the row by hand does not re-authorize a restore
+    prov.live.update(QA_FIXTURE)
+    assert transitions.apply_stub_transition(prov, str(APP_DIR), approval_file=approval) == {}
+    assert len(prov.writes) == 1 and not os.path.exists(approval)
+
+
+def test_row_changed_between_read_and_write_is_not_overwritten(tmp_path):
+    class Racy(FakeProvider):
+        def __init__(self, live):
+            super().__init__(live)
+            self.reads = 0
+
+        def read_contributed_agent(self, kind, slug):
+            self.reads += 1
+            if self.reads == 2:  # someone saves a new prompt after the first read
+                self.live["system_prompt"] = "A newer valid reviewer instruction."
+            return super().read_contributed_agent(kind, slug)
+
+    prov = Racy(QA_FIXTURE)
+    approval = _approve(prov, tmp_path)
+    assert transitions.apply_stub_transition(prov, str(APP_DIR), approval_file=approval) == {}
+    assert prov.writes == [] and prov.live["system_prompt"].startswith("A newer")
+
+
+def test_malformed_approval_fields_do_not_raise(tmp_path):
+    import json
+
+    prov = FakeProvider(QA_FIXTURE)
+    path = _approve(prov, tmp_path)
+    for bad in (42, [1, 2], None, "model_slug"):
+        doc = json.load(open(path)); doc["fields"] = bad
+        json.dump(doc, open(path, "w"))
+        assert transitions.apply_stub_transition(prov, str(APP_DIR), approval_file=path) == {}
+    assert prov.writes == []
 
 
 def test_approval_after_drift_or_for_a_different_row_writes_nothing(tmp_path):

@@ -27,7 +27,7 @@ the plugin's loop and on the next activation while the approval still matches.
    `python3 -I devteam_app/transitions.py --live-fingerprint <sha256> --approved-by <you>`
    (run from the installed app dir; writes
    `$AW_WORKSPACE_HOME/data/aw-app-devteam/restore-approval.json`).
-4. Re-activate the app (or restart). The row is restored once; later
+4. Re-activate the app (or restart). The row is restored once and the approval file is renamed `.applied` (one approval, one restore); later
    activations are zero-write.
 
 Editing the row after step 3, or upgrading to a manifest with different
