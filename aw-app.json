@@ -19,7 +19,8 @@
     "pip_requires": []
   },
   "permissions": [
-    "agents:contribute"
+    "agents:contribute",
+    "tasks:contribute"
   ],
   "contributes": {
     "skills": [
@@ -37,6 +38,11 @@
         "id": "aw-code-review-response",
         "path": "skills/aw-code-review-response/SKILL.md",
         "description": "How a Coder acts on a reviewed PR \u2014 judge every finding against the card, reply on each one (handled here / another card / won't do), then push or merge per the v2 gate mechanics, or escalate to the manager."
+      },
+      {
+        "id": "aw-manager",
+        "path": "skills/aw-manager/SKILL.md",
+        "description": "Dev-Team card-routing agent \u2014 fed by a named selector (Mode A, e.g. the daily stale-card sweep) or an explicit work-order list (Mode B) from any task/workflow/agent, it routes each card to the actor who can decide (coder, architect, product-owner, or a human) and manages devteam:* tag authority. Never decides a verdict itself."
       }
     ],
     "agents": {
@@ -56,6 +62,18 @@
             "tmp_access": true
           },
           "auto_compact_threshold_tokens": 500000
+        },
+        {
+          "slug": "devteam-manager-config",
+          "name": "Dev Team Manager",
+          "description": "Read the workspace, reach the gateway. Full workspace filesystem access (the analyst audits that tree) plus the shared network, and the aw-gateway MCP server \u2014 without which there is no Kanban to file findings into and no knowledge base to check them against.",
+          "mcp_servers": [
+            "aw-gateway"
+          ],
+          "permissions": {
+            "workspace_access": true,
+            "share_network": true
+          }
         }
       ],
       "groups": [
@@ -507,6 +525,26 @@
           "hidden_from_flow": true,
           "icon": "search",
           "color": "#8b949e"
+        },
+        {
+          "slug": "manager",
+          "name": "Manager",
+          "description": "The Dev Team's card-routing agent \u2014 fed by multiple tasks/workflows (not a sweep-only agent), it routes each card to the actor who can decide (coder, architect, product-owner, or a human) and moves/comments/creates Kanban cards accordingly. Never decides a verdict itself; never fixes anything.",
+          "system_prompt_file": "prompts/manager.md",
+          "model_slug": "claude-runner-sonnet",
+          "disable_harness_tools": true,
+          "agent_config_slug": "devteam-manager-config",
+          "skill_slugs": [],
+          "capabilities": "Takes a named selector (e.g. the stale-card sweep) or an explicit work-order list, and for each card checks whether anything is still in flight, routes it to the named actor the routing matrix calls for (coder/architect/product-owner/human), and manages devteam:* tag authority. Read-only with respect to code; calls mark_flow_done only on a card-less run, never on a run that carries a Kanban card.",
+          "use_cases": [
+            "run the stale-card sweep",
+            "why are these cards still In Progress",
+            "close out abandoned Kanban cards",
+            "route this card to the right agent"
+          ],
+          "hidden_from_flow": false,
+          "icon": "wind",
+          "color": "#38bdf8"
         }
       ],
       "workflows": [
@@ -640,6 +678,16 @@
                   "x": 1140,
                   "y": 80
                 }
+              },
+              {
+                "id": "agent-manager",
+                "type": "agent",
+                "agent_slug": "manager",
+                "label": "Manager",
+                "position": {
+                  "x": 860,
+                  "y": 430
+                }
               }
             ],
             "edges": [
@@ -722,12 +770,44 @@
                 "id": "e-coders-code-reviewer-sonnet",
                 "source": "group-coders",
                 "target": "agent-code-reviewer-sonnet"
+              },
+              {
+                "source": "agent-manager",
+                "target": "agent-product-owner"
+              },
+              {
+                "source": "agent-manager",
+                "target": "agent-architect"
+              },
+              {
+                "source": "agent-manager",
+                "target": "group-coders"
+              },
+              {
+                "source": "agent-manager",
+                "target": "group-qas"
               }
             ]
           }
         }
       ]
-    }
+    },
+    "tasks": [
+      {
+        "name": "Kanban sweep \u2014 stale In Progress / Need Human",
+        "type": "agent_prompt",
+        "agent_slug": "manager",
+        "prompt": "/aw-manager\n\nselector: stale-sweep\n\nRun the stale-sweep selector as defined in the aw-manager skill: Priority check first for cards whose flow already escalated to Need Human but never moved, then Batch 1 stale In Progress cards (run-check first, resume or fallback-dispatch), then Batch 2 Need Human complement if the Priority check and Batch 1 together didn't fill 5 slots (route per the routing matrix). Comment on every card you touch. End with a plain-text report, then conclude the run with mark_flow_done(outcome='success', qa_not_needed=true, summary=<the report>) \u2014 this dispatch carries no Kanban card, so the call records only the run and moves nothing. Never call mark_flow_done on a run that carries a Kanban card.",
+        "reuse_session": false,
+        "schedules": [
+          {
+            "kind": "daily",
+            "time": "04:00"
+          }
+        ],
+        "enabled": false
+      }
+    ]
   },
   "config_visible": false,
   "dependencies": {
@@ -743,6 +823,12 @@
         "version": ">=0.25.0",
         "required": false,
         "reason": "Supplies knowledge_search, which all three contracts make a mandatory first step. Non-required, but the team is materially worse without it: the KB is what stops the Architect re-deciding something already decided and the PO re-scoping something already shipped."
+      },
+      {
+        "id": "tasks",
+        "version": ">=0.16.1",
+        "required": false,
+        "reason": "Provides the contributes.tasks surface \u2014 it owns the task tables and the cron tick. Non-required for the same reason as above: the declaration is held and replayed. Note the floor: seeding an 'agent_prompt' task needs the agent_slug forwarding added to register_contributed_task on 2026-08-13; an older tasks app seeds the row with a NULL agent_slug and it never dispatches."
       }
     ]
   },
