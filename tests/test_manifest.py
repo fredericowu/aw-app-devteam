@@ -86,7 +86,7 @@ def test_qa_sits_where_its_own_skill_says_it_does(spec):
 
     # ...and both QA agents are actually in the group the node names, or it
     # expands to nobody and draws a box connected to nothing.
-    members = {a["slug"] for a in spec["agents"] if a["group_slug"] == "qas"}
+    members = {a["slug"] for a in spec["agents"] if a.get("group_slug") == "qas"}
     assert members == {"qa-sonnet", "qa-haiku"}
 
 
@@ -113,7 +113,7 @@ def _neighbours(spec, *, agent_slug=None, group_slug=None):
             return {node["agent_slug"]}
         if node["type"] == "group":
             return {a["slug"] for a in spec["agents"]
-                    if a["group_slug"] == node["group_slug"]}
+                    if a.get("group_slug") == node["group_slug"]}
         return {node["type"]}  # the source node has no agent behind it
 
     out = set()
@@ -162,7 +162,7 @@ def test_the_coders_are_one_group_node_sitting_between_design_and_review(spec):
     with a genuine product question routes back rather than guessing), and
     the finished work goes to QA.
     """
-    members = {a["slug"] for a in spec["agents"] if a["group_slug"] == "coders"}
+    members = {a["slug"] for a in spec["agents"] if a.get("group_slug") == "coders"}
     assert members == {"coder-sonnet", "coder-opus", "coder-haiku", "coder-codex",
                        "coder-sol", "coder-luna", "coder-terra", "coder-flash", "coder-gemini"}
     # The UX Coder is deliberately NOT here — see the test above; it would
@@ -291,7 +291,7 @@ def test_flow_membership_is_exactly_what_the_contracts_document(spec):
     wired = {n["agent_slug"] for n in spec["agent_flows"][0]["graph"]["nodes"]
              if n["type"] == "agent"}
     assert wired == {"product-owner", "architect", "ux-coder-sonnet",
-                     "debugger", "doc-writer", "code-reviewer-sonnet"}
+                     "debugger", "doc-writer", "code-reviewer-sonnet", "manager"}
     grouped = {n["group_slug"] for n in spec["agent_flows"][0]["graph"]["nodes"]
                if n["type"] == "group"}
     assert grouped == {"coders", "qas"}
@@ -308,7 +308,7 @@ def test_flow_membership_is_exactly_what_the_contracts_document(spec):
     # card-less, caller-less CI run (incident: run
     # 8137817bf28841ee8a3643d2a769f12c).
     never_flow_dispatched = {"pr-research-haiku", "code-reviewer-pipeline"}
-    in_a_wired_group = {a["slug"] for a in spec["agents"] if a["group_slug"] in grouped}
+    in_a_wired_group = {a["slug"] for a in spec["agents"] if a.get("group_slug") in grouped}
     assert (wired | in_a_wired_group | never_flow_dispatched
             == {a["slug"] for a in spec["agents"]})
 
@@ -361,7 +361,8 @@ def test_agents_reference_a_declared_config_and_group(spec):
     groups = {g["slug"] for g in spec["groups"]}
     for agent in spec["agents"]:
         assert agent["agent_config_slug"] in configs, agent["slug"]
-        assert agent["group_slug"] in groups, agent["slug"]
+        if agent["slug"] != "manager":  # Manager is ungrouped (verbatim from its previous owner)
+            assert agent["group_slug"] in groups, agent["slug"]
 
 
 def test_referenced_files_exist(manifest, spec):
@@ -481,3 +482,35 @@ def test_code_review_pipeline_is_persisted_in_code(spec):
     nodes = {n["id"]: n for n in wf["graph"]["nodes"]}
     assert nodes["gate"]["flag"] == "code_reviewer_enabled"
     assert nodes["review"]["agent"] == "code-reviewer-pipeline"
+
+
+def test_manager_loads_its_contract_at_runtime(manifest):
+    manager = next(a for a in manifest["contributes"]["agents"]["agents"]
+                   if a["slug"] == "manager")
+    assert not manager.get("skill_slugs"), "Manager skills must not be eagerly injected"
+    prompt = (APP_DIR / manager["system_prompt_file"]).read_text()
+    skill = next(s for s in manifest["contributes"]["skills"] if s["id"] == "aw-manager")
+    assert (APP_DIR / skill["path"]).is_file()
+    assert "/opt/aw-workspace/skills/aw-manager/SKILL.md" in prompt
+    assert len(prompt.encode("utf-8")) < 2048
+
+
+def test_manager_has_its_own_narrow_config_and_the_sweep_task(manifest):
+    agents = manifest["contributes"]["agents"]
+    manager = next(a for a in agents["agents"] if a["slug"] == "manager")
+    assert manager["agent_config_slug"] == "devteam-manager-config"
+    cfg = next(c for c in agents["agent_configs"] if c["slug"] == "devteam-manager-config")
+    assert cfg["permissions"] == {"workspace_access": True, "share_network": True}
+    assert "tasks:contribute" in manifest["permissions"]
+    assert any(d["id"] == "tasks" for d in manifest["dependencies"]["apps"])
+    tasks = manifest["contributes"]["tasks"]
+    assert [t["agent_slug"] for t in tasks] == ["manager"]
+
+
+def test_manager_node_is_wired_to_exactly_its_four_neighbours(spec):
+    graph = spec["agent_flows"][0]["graph"]
+    assert any(n["id"] == "agent-manager" and n["agent_slug"] == "manager"
+               for n in graph["nodes"])
+    targets = {e["target"] for e in graph["edges"] if e["source"] == "agent-manager"}
+    assert targets == {"agent-product-owner", "agent-architect", "group-coders", "group-qas"}
+    assert not [e for e in graph["edges"] if e["target"] == "agent-manager"]
