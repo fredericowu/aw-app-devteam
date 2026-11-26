@@ -514,3 +514,10 @@ def test_manager_node_is_wired_to_exactly_its_four_neighbours(spec):
     targets = {e["target"] for e in graph["edges"] if e["source"] == "agent-manager"}
     assert targets == {"agent-product-owner", "agent-architect", "group-coders", "group-qas"}
     assert not [e for e in graph["edges"] if e["target"] == "agent-manager"]
+
+
+def test_tasks_dependency_floor_is_the_agent_slug_forwarding_release(manifest):
+    """Tasks 0.16.0 seeds an agent_prompt task with a NULL agent_slug (the
+    sweep would never dispatch); 0.16.1 is the first release that forwards it."""
+    dep = next(d for d in manifest["dependencies"]["apps"] if d["id"] == "tasks")
+    assert dep["version"] == ">=0.16.1"

@@ -826,7 +826,7 @@
       },
       {
         "id": "tasks",
-        "version": ">=0.16.0",
+        "version": ">=0.16.1",
         "required": false,
         "reason": "Provides the contributes.tasks surface \u2014 it owns the task tables and the cron tick. Non-required for the same reason as above: the declaration is held and replayed. Note the floor: seeding an 'agent_prompt' task needs the agent_slug forwarding added to register_contributed_task on 2026-08-13; an older tasks app seeds the row with a NULL agent_slug and it never dispatches."
       }
