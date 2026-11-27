@@ -54,14 +54,27 @@ Owner decision (card 4255bf3b). Procedure, in this order:
      tied to it): do not split a second time. Resume it or park it instead.
    - You cannot name what was completed vs what remains from the card, its
      comments and its runs: read more before splitting.
+   - A human question is pending on the card (a Need Human card waiting on an
+     `ask_human`): defer the split. The question's answer link stays bound to
+     the original and would resume work against a Done card. Split only after
+     the answer arrives and is routed.
+   - The board lacks `SplitCard`: confirm with `get_kanban_properties` or the
+     unknown-property error list before creating anything; if absent, do not
+     split (report it) rather than leave an unlinked replacement.
+   - A replacement already exists (search the board for a `[SPLIT]` card whose
+     `SplitCard` equals this page_id): reuse it for steps 2b to 5 instead of
+     creating another.
 2. Create the new card with `create_kanban_task`: title `[SPLIT] <original
    title>` (if the original already starts with `[SPLIT]`, keep a single
    prefix), same `agent_slug`, `target_slug`, `priority`, `plan_slug` and tags,
    `parent_card` = the original when the original has none of its own, and a
    body (`input_text` / `plan`) containing only the remaining scope plus the
    original's `page_id` and URL. Do not paste the old comment thread; link it.
-2b. Set the schema field with `set_kanban_property(property="SplitCard",
-   value="<original page_id>")`. `SplitCard` is the one canonical name (Notion
+2b. Set the schema field on the NEW card, always passing `page_id` explicitly
+   (omitted, it resolves to your own run's card, the original):
+   `set_kanban_property(page_id="<new page_id>", property="SplitCard",
+   value="<original page_id>")`. Verify the write succeeded before closing the
+   original. `SplitCard` is the one canonical name (Notion
    rich text, created by aw-app-notion's schema repair; Frederico wrote
    "splited-card" / "split-card", both mean this field).
 3. Comment on the new card (`add_kanban_comment`): "Split from <original

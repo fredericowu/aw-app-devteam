@@ -38,3 +38,12 @@ def test_prompt_states_split_rule():
     p = " ".join((APP_DIR / "prompts/project-manager.md").read_text().split())
     assert "Split rule" in p and "[SPLIT] <original title>" in p and "SplitCard" in p
     assert "The one exception is the split rule" in p
+
+
+def test_split_review_fixes():
+    s = _skill()
+    sec = s[s.index("## Split rule"):s.index("## Card moves")]
+    assert 'set_kanban_property(page_id="<new page_id>", property="SplitCard"' in sec
+    assert "A human question is pending on the card" in sec and "defer the split" in sec
+    assert "The board lacks `SplitCard`" in sec
+    assert "A replacement already exists" in sec
