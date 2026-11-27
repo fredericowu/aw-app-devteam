@@ -343,7 +343,7 @@ def test_project_manager_records_human_answers_in_qa_before_routing():
     skill = " ".join((APP_DIR / "skills/aw-agent-project-manager/SKILL.md").read_text().split())
     contribute = skill[skill.index("## Contribute"):skill.index("## Split rule")]
     for needle in ("qa_propose_create", "qa_propose_update", "BEFORE you route it", "unblocking",
-                   "relayed in a card comment", "not yet in Q&A is not handled"):
+                   "relayed in a card comment", "qa_list_proposals", "not yet in Q&A is not handled"):
         assert needle in contribute, needle
     park = skill[skill.index("## Human park protocol"):skill.index("## Players")]
     answers = park[park.index("When the human answers"):]

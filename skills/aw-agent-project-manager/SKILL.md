@@ -57,7 +57,11 @@ channel), record it in Q&A BEFORE you route it: `qa_propose_create`, or
 `qa_propose_update` when an entry exists but is stale or thin (check with
 `qa_search` first), tagged `unblocking`. Write it reusable, not card-specific:
 a general question, the answer, and when it applies. No card ids, run ids or
-thread chatter in the body. Next time `qa_search` finds it and no human is
+thread chatter in the body. A proposal stays pending until the owner approves
+it, and `qa_search` does not return it meanwhile: put the proposal id in a card
+comment, and in step 1 and the park prerequisite also check `qa_list_proposals`
+for a pending proposal on the same blocker. A pending proposal is the answer: use
+it as the evidence and do not ask a human again. Next time `qa_search` finds it and no human is
 asked again. A human answer not yet in Q&A is not handled.
 
 ## Split rule (In Progress / Need Human)
@@ -121,7 +125,7 @@ protocol on the new card.
 Only for the human-only list: spending money, credentials only the owner holds,
 an irreversible action on real data, a product call.
 0. Prerequisites, all in this turn: `qa_search` (retried once if it failed)
-   found no answer, and the server-side trace check (step 3 above) shows the
+   and `qa_list_proposals` (pending) found no answer, and the server-side trace check (step 3 above) shows the
    owner has not already acted. If either is missing, do it first; never
    `ask_human` or re-ping without them. This holds on every path that can reach
    a human: the Split rule (a carried-over scope that still needs a person), a
