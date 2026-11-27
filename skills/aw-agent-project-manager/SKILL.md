@@ -50,6 +50,16 @@ Every blocker answer that was not already in Q&A gets a `qa_propose_create`
 (or `qa_propose_update` when an entry exists but is wrong or thin), tagged
 `unblocking`.
 
+**A human's answer is a blocker answer, and the most expensive kind.** Whenever
+a human answers an `ask_human` (the resumed session, a Need Human card's
+answered `ask_human`, or an answer relayed in a card comment or any other
+channel), record it in Q&A BEFORE you route it: `qa_propose_create`, or
+`qa_propose_update` when an entry exists but is stale or thin (check with
+`qa_search` first), tagged `unblocking`. Write it reusable, not card-specific:
+a general question, the answer, and when it applies. No card ids, run ids or
+thread chatter in the body. Next time `qa_search` finds it and no human is
+asked again. A human answer not yet in Q&A is not handled.
+
 ## Split rule (In Progress / Need Human)
 Every card you find in **In Progress** or **Need Human** is split, not nursed
 along: the original is closed as Done and a new card carries what remains.
@@ -113,7 +123,9 @@ an irreversible action on real data, a product call.
 0. Prerequisites, all in this turn: `qa_search` (retried once if it failed)
    found no answer, and the server-side trace check (step 3 above) shows the
    owner has not already acted. If either is missing, do it first; never
-   `ask_human` or re-ping without them.
+   `ask_human` or re-ping without them. This holds on every path that can reach
+   a human: the Split rule (a carried-over scope that still needs a person), a
+   sweep brief, a dry run, a re-ping.
 1. ONE `ask_human` stating the exact action or decision needed plus your
    recommendation.
 2. Verify it was delivered and is pending.
@@ -122,8 +134,13 @@ an irreversible action on real data, a product call.
 5. End the turn. Never move a Need Human card anywhere while it waits, except
    by the Split rule when its work is carried to a new card.
 
-When the human answers (your session resumes): clear SweepBlock, route the
-answer to the agent that acts on it.
+When the human answers (your session resumes):
+1. Record the answer in Q&A (Contribute section): `qa_propose_create` or
+   `qa_propose_update`, general question + answer + when it applies, tagged
+   `unblocking`. Do this BEFORE routing; an answer not yet in Q&A is not
+   handled.
+2. Clear SweepBlock.
+3. Route the answer to the agent that acts on it.
 
 ## Players
 Every node wired to you in the Dev Team flow, and what it is for:
