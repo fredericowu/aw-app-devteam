@@ -48,6 +48,7 @@ Run check ① on every candidate (12h `last_edited_time` filter only for `routed
 Ambiguous: resume original session via `invoke_kanban_agent`; only if refused, matrix (Batch 2: architect). 1-3 defer the stamp: after the `🧹` comment call `register_callback(run_id)` and keep `(page_id, run_id, status_at_touch)`; 4 stamps inline.
 
 ## ChildCards guard
+**Bloated-provenance check first:** if `UpdateRunIds` (`get_kanban_properties`) is over 1500 characters or lists over 40 run ids and no run is in flight, route the card to `project-manager` for its split rule (matrix 1-style dispatch, `slug="project-manager"`) instead of the epic comment/stamp below.
 After back-off, before any resume/dispatch: `get_kanban_card` each child (terminal = `Done`, `Self-closed`, `Archived`). Any non-terminal: comment "epic container - not resuming", stamp, no SweepBlock. All terminal and `len(child_cards) < 25`: move parent to done. `len(child_cards) >= 25` without `has_more == false` (Notion truncates at 25): withhold auto-completion, comment, report.
 
 ## Back-off, stamp, SweepBlock
