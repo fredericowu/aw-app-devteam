@@ -43,6 +43,11 @@
         "id": "aw-manager",
         "path": "skills/aw-manager/SKILL.md",
         "description": "Dev-Team card-routing agent \u2014 fed by a named selector (Mode A, e.g. the daily stale-card sweep) or an explicit work-order list (Mode B) from any task/workflow/agent, it routes each card to the actor who can decide (coder, architect, product-owner, or a human) and manages devteam:* tag authority. Never decides a verdict itself."
+      },
+      {
+        "id": "aw-agent-project-manager",
+        "path": "skills/aw-agent-project-manager/SKILL.md",
+        "description": "Contract for the Project Manager agent \u2014 keeps cards moving: Q&A-first unblocking, kicks the agent that owns the missing decision, records answers back into Q&A, parks on a human only for the human-only list. Never moves a card to Planned."
       }
     ],
     "agents": {
@@ -545,6 +550,28 @@
           "hidden_from_flow": false,
           "icon": "wind",
           "color": "#38bdf8"
+        },
+        {
+          "slug": "project-manager",
+          "name": "Project Manager",
+          "description": "Keeps work moving: finds the answer that unblocks a card (Q&A first), kicks the agent that owns the missing decision, records new answers back into Q&A, and parks a card on a human only for the human-only list. Drives the kanban sweep. Never writes code, designs or scopes.",
+          "system_prompt_file": "prompts/project-manager.md",
+          "model_slug": "codex-runner-gpt-6-1-sol",
+          "agent_config_slug": "devteam-config",
+          "group_slug": "devteam",
+          "skill_slugs": [
+            "aw-agent-project-manager"
+          ],
+          "capabilities": "Unblocks agents, moves cards around and gets them done: searches Q&A and the knowledge base for the blocker, resumes or dispatches whichever agent can unblock the card, contributes answers back to Q&A, and parks on a human with one precise question only when nothing else can.",
+          "use_cases": [
+            "why is this card stuck",
+            "unblock this card",
+            "drive the kanban sweep over Need Human cards",
+            "find the answer in Q&A and route it to the right agent"
+          ],
+          "hidden_from_flow": false,
+          "icon": "zap",
+          "color": "#f59e0b"
         }
       ],
       "workflows": [
@@ -688,6 +715,16 @@
                   "x": 860,
                   "y": 430
                 }
+              },
+              {
+                "id": "agent-project-manager",
+                "type": "agent",
+                "agent_slug": "project-manager",
+                "label": "Project Manager",
+                "position": {
+                  "x": 580,
+                  "y": 600
+                }
               }
             ],
             "edges": [
@@ -786,6 +823,56 @@
               {
                 "source": "agent-manager",
                 "target": "group-qas"
+              },
+              {
+                "id": "e-project-manager-source",
+                "source": "agent-project-manager",
+                "target": "source"
+              },
+              {
+                "id": "e-project-manager-product-owner",
+                "source": "agent-project-manager",
+                "target": "agent-product-owner"
+              },
+              {
+                "id": "e-project-manager-architect",
+                "source": "agent-project-manager",
+                "target": "agent-architect"
+              },
+              {
+                "id": "e-project-manager-ux-coder-sonnet",
+                "source": "agent-project-manager",
+                "target": "agent-ux-coder-sonnet"
+              },
+              {
+                "id": "e-project-manager-qas",
+                "source": "agent-project-manager",
+                "target": "group-qas"
+              },
+              {
+                "id": "e-project-manager-coders",
+                "source": "agent-project-manager",
+                "target": "group-coders"
+              },
+              {
+                "id": "e-project-manager-debugger",
+                "source": "agent-project-manager",
+                "target": "agent-debugger"
+              },
+              {
+                "id": "e-project-manager-doc-writer",
+                "source": "agent-project-manager",
+                "target": "agent-doc-writer"
+              },
+              {
+                "id": "e-project-manager-code-reviewer-sonnet",
+                "source": "agent-project-manager",
+                "target": "agent-code-reviewer-sonnet"
+              },
+              {
+                "id": "e-project-manager-manager",
+                "source": "agent-project-manager",
+                "target": "agent-manager"
               }
             ]
           }
