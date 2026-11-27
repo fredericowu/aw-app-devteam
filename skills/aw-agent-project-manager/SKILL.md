@@ -40,10 +40,49 @@ Every blocker answer that was not already in Q&A gets a `qa_propose_create`
 (or `qa_propose_update` when an entry exists but is wrong or thin), tagged
 `unblocking`.
 
+## Split rule (In Progress / Need Human)
+Every card you find in **In Progress** or **Need Human** is split, not nursed
+along: the original is closed as Done and a new card carries what remains.
+Owner decision (card 4255bf3b). Procedure, in this order:
+1. **Guardrails first; any failure means do not split** (continue with Order of
+   work and Kick as usual):
+   - A run is executing or pending on the card (`list_runs` /
+     `list_target_runs`; exclude your own run and other Project Manager runs):
+     never split under a live run.
+   - The title already starts with `[SPLIT]` and the card shows no progress
+     since it was created (no new comment from an agent run, no PR or commit
+     tied to it): do not split a second time. Resume it or park it instead.
+   - You cannot name what was completed vs what remains from the card, its
+     comments and its runs: read more before splitting.
+2. Create the new card with `create_kanban_task`: title `[SPLIT] <original
+   title>` (if the original already starts with `[SPLIT]`, keep a single
+   prefix), same `agent_slug`, `target_slug`, `priority`, `plan_slug` and tags,
+   `parent_card` = the original when the original has none of its own, and a
+   body (`input_text` / `plan`) containing only the remaining scope plus the
+   original's `page_id` and URL. Do not paste the old comment thread; link it.
+2b. Set the schema field with `set_kanban_property(property="SplitCard",
+   value="<original page_id>")`. `SplitCard` is the one canonical name (Notion
+   rich text, created by aw-app-notion's schema repair; Frederico wrote
+   "splited-card" / "split-card", both mean this field).
+3. Comment on the new card (`add_kanban_comment`): "Split from <original
+   title> (<page_id>, <url>)".
+4. Close the original with `move_kanban_task(status="done", comment=...)`; the
+   comment lists what was completed, what was carried over, and the new card's
+   `page_id` and URL. This is the one Done move that does not go through
+   `mark_flow_done`, because the original's work is not what QA verifies; the
+   new card gets its own QA. Move the original only after the new card exists
+   and `SplitCard` is set.
+5. Continue on the **new** card: kick the agent that owns the remaining work
+   (Kick section), passing the new card's `page_id`.
+A Need Human card that is split loses its Need Human status with the original
+(Done); if the remaining scope still needs a person, run the Human park
+protocol on the new card.
+
 ## Card moves
 - Never move a card to **Planned**. It is not your lane.
 - **Done** only through `mark_flow_done` with a real `qa_run_id` or a justified
-  `qa_not_needed`. Never call `mark_flow_done` as a way to end a turn.
+  `qa_not_needed`. Never call `mark_flow_done` as a way to end a turn. The only
+  exception is closing the original card of a split (see Split rule).
 
 ## Human park protocol
 Only for the human-only list: spending money, credentials only the owner holds,
@@ -53,7 +92,8 @@ an irreversible action on real data, a product call.
 2. Verify it was delivered and is pending.
 3. Ensure the status is Need Human (move it only if it is not already there).
 4. Stamp SweepBlock `routed-human|1|<iso>|<the exact ask>`.
-5. End the turn. Never move a Need Human card anywhere while it waits.
+5. End the turn. Never move a Need Human card anywhere while it waits, except
+   by the Split rule when its work is carried to a new card.
 
 When the human answers (your session resumes): clear SweepBlock, route the
 answer to the agent that acts on it.
