@@ -873,6 +873,56 @@
                 "id": "e-project-manager-manager",
                 "source": "agent-project-manager",
                 "target": "agent-manager"
+              },
+              {
+                "id": "e-source-project-manager",
+                "source": "source",
+                "target": "agent-project-manager"
+              },
+              {
+                "id": "e-product-owner-project-manager",
+                "source": "agent-product-owner",
+                "target": "agent-project-manager"
+              },
+              {
+                "id": "e-architect-project-manager",
+                "source": "agent-architect",
+                "target": "agent-project-manager"
+              },
+              {
+                "id": "e-ux-coder-sonnet-project-manager",
+                "source": "agent-ux-coder-sonnet",
+                "target": "agent-project-manager"
+              },
+              {
+                "id": "e-group-qas-project-manager",
+                "source": "group-qas",
+                "target": "agent-project-manager"
+              },
+              {
+                "id": "e-group-coders-project-manager",
+                "source": "group-coders",
+                "target": "agent-project-manager"
+              },
+              {
+                "id": "e-debugger-project-manager",
+                "source": "agent-debugger",
+                "target": "agent-project-manager"
+              },
+              {
+                "id": "e-doc-writer-project-manager",
+                "source": "agent-doc-writer",
+                "target": "agent-project-manager"
+              },
+              {
+                "id": "e-code-reviewer-sonnet-project-manager",
+                "source": "agent-code-reviewer-sonnet",
+                "target": "agent-project-manager"
+              },
+              {
+                "id": "e-manager-project-manager",
+                "source": "agent-manager",
+                "target": "agent-project-manager"
               }
             ]
           }
