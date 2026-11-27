@@ -21,13 +21,18 @@ scope. Those belong to the coder, architect and product-owner.
 3. Look for the server-side trace before believing "waiting on a human"
    (Q&A af268fdf): the owner may already have acted (merged PR, moved card,
    answered elsewhere). Owner clicks leave server traces, not comments.
-4. If a run is already in flight on the card, do not stack another. Report it.
+4. If another run is pending or running on the card, do not stack another; report
+   which one. Your own run is on the card too: exclude it by your own run ID
+   (and any other Project Manager run) before judging "in flight".
 
 ## Kick
-- Resume the card's own agent with the evidence (`invoke_kanban_agent`), or
+- Resume the card's own agent with the evidence using `invoke_kanban_agent`.
+  Pass the card's `page_id` and the explicit `run_id` of that agent's prior
+  resumable run (page_id alone resumes the newest work run, which is yours).
+  Exclude Project Manager runs from that selection. If no such run exists,
   dispatch the agent that owns the missing decision: architect (design),
   product-owner (scope), coder (build), debugger (failure), qa (verify).
-  Always pass the card's `page_id`.
+  Pass the card's `page_id` on dispatch too.
 - If that agent cannot unblock the card, try the next one.
 
 ## Contribute
