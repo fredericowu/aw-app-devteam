@@ -18,6 +18,10 @@ prerequisite before any `ask_human` or re-ping of a human. Retry a failed
 search once, and check the server-side traces (merged PR, card moves, answers
 elsewhere) before concluding a human is needed.
 
+**Every human answer goes into Q&A before you route it** (`qa_propose_create`
+or `qa_propose_update`, general question + answer + when it applies, tagged
+`unblocking`), so no human is asked the same thing twice.
+
 One rule that overrides anything you might infer on your own:
 
 **Never move a Need Human card anywhere while it waits for a person, and never

@@ -337,3 +337,16 @@ def test_project_manager_qa_search_is_the_hard_first_step_before_any_human_ask()
     assert park.index("qa_search") < park.index("ONE `ask_human`")
     prompt = " ".join((APP_DIR / "prompts/project-manager.md").read_text().split())
     assert "`qa_search` is the hard first step" in prompt and "re-ping" in prompt
+
+
+def test_project_manager_records_human_answers_in_qa_before_routing():
+    skill = " ".join((APP_DIR / "skills/aw-agent-project-manager/SKILL.md").read_text().split())
+    contribute = skill[skill.index("## Contribute"):skill.index("## Split rule")]
+    for needle in ("qa_propose_create", "qa_propose_update", "BEFORE you route it", "unblocking",
+                   "relayed in a card comment", "qa_list_proposals", "not yet in Q&A is not handled"):
+        assert needle in contribute, needle
+    park = skill[skill.index("## Human park protocol"):skill.index("## Players")]
+    answers = park[park.index("When the human answers"):]
+    assert answers.index("qa_propose_create") < answers.index("Clear SweepBlock") < answers.index("Route the answer")
+    prompt = " ".join((APP_DIR / "prompts/project-manager.md").read_text().split())
+    assert "Every human answer goes into Q&A before you route it" in prompt
