@@ -291,7 +291,8 @@ def test_flow_membership_is_exactly_what_the_contracts_document(spec):
     wired = {n["agent_slug"] for n in spec["agent_flows"][0]["graph"]["nodes"]
              if n["type"] == "agent"}
     assert wired == {"product-owner", "architect", "ux-coder-sonnet",
-                     "debugger", "doc-writer", "code-reviewer-sonnet", "manager"}
+                     "debugger", "doc-writer", "code-reviewer-sonnet", "manager",
+                     "project-manager"}
     grouped = {n["group_slug"] for n in spec["agent_flows"][0]["graph"]["nodes"]
                if n["type"] == "group"}
     assert grouped == {"coders", "qas"}
@@ -513,7 +514,10 @@ def test_manager_node_is_wired_to_exactly_its_four_neighbours(spec):
                for n in graph["nodes"])
     targets = {e["target"] for e in graph["edges"] if e["source"] == "agent-manager"}
     assert targets == {"agent-product-owner", "agent-architect", "group-coders", "group-qas"}
-    assert not [e for e in graph["edges"] if e["target"] == "agent-manager"]
+    # The Project Manager is wired to every node, the Manager included.
+    assert not [e for e in graph["edges"]
+                if e["target"] == "agent-manager"
+                and e["source"] != "agent-project-manager"]
 
 
 def test_tasks_dependency_floor_is_the_agent_slug_forwarding_release(manifest):
@@ -521,3 +525,29 @@ def test_tasks_dependency_floor_is_the_agent_slug_forwarding_release(manifest):
     sweep would never dispatch); 0.16.1 is the first release that forwards it."""
     dep = next(d for d in manifest["dependencies"]["apps"] if d["id"] == "tasks")
     assert dep["version"] == ">=0.16.1"
+
+
+def test_project_manager_is_declared_and_never_moves_a_card_on_dispatch(spec):
+    """The sweep driver must not flip Need Human cards to Planned at run start
+    (executor._auto_set_kanban_status): neither the agent nor its group may
+    carry kanban_target_status."""
+    pm = next(a for a in spec["agents"] if a["slug"] == "project-manager")
+    assert pm["group_slug"] == "devteam"
+    assert pm["model_slug"] == "codex-runner-gpt-6-1-sol"
+    assert pm["skill_slugs"] == ["aw-agent-project-manager"]
+    assert "kanban_target_status" not in pm
+    group = next(g for g in spec["groups"] if g["slug"] == "devteam")
+    assert "kanban_target_status" not in group
+
+
+def test_project_manager_is_wired_to_every_other_flow_node(spec):
+    graph = spec["agent_flows"][0]["graph"]
+    ids = {n["id"] for n in graph["nodes"]}
+    assert "agent-project-manager" in ids
+    linked = set()
+    for e in graph["edges"]:
+        if e["source"] == "agent-project-manager":
+            linked.add(e["target"])
+        elif e["target"] == "agent-project-manager":
+            linked.add(e["source"])
+    assert linked == ids - {"agent-project-manager"}
