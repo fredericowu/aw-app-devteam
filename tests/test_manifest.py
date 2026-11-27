@@ -512,7 +512,9 @@ def test_manager_node_is_wired_to_exactly_its_four_neighbours(spec):
     graph = spec["agent_flows"][0]["graph"]
     assert any(n["id"] == "agent-manager" and n["agent_slug"] == "manager"
                for n in graph["nodes"])
-    targets = {e["target"] for e in graph["edges"] if e["source"] == "agent-manager"}
+    targets = {e["target"] for e in graph["edges"]
+               if e["source"] == "agent-manager"
+               and e["target"] != "agent-project-manager"}
     assert targets == {"agent-product-owner", "agent-architect", "group-coders", "group-qas"}
     # The Project Manager is wired to every node, the Manager included.
     assert not [e for e in graph["edges"]
@@ -544,10 +546,10 @@ def test_project_manager_is_wired_to_every_other_flow_node(spec):
     graph = spec["agent_flows"][0]["graph"]
     ids = {n["id"] for n in graph["nodes"]}
     assert "agent-project-manager" in ids
-    linked = set()
-    for e in graph["edges"]:
-        if e["source"] == "agent-project-manager":
-            linked.add(e["target"])
-        elif e["target"] == "agent-project-manager":
-            linked.add(e["source"])
-    assert linked == ids - {"agent-project-manager"}
+    others = ids - {"agent-project-manager"}
+    outgoing = {e["target"] for e in graph["edges"]
+                if e["source"] == "agent-project-manager"}
+    incoming = {e["source"] for e in graph["edges"]
+                if e["target"] == "agent-project-manager"}
+    assert outgoing == others
+    assert incoming == others
