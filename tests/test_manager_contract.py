@@ -323,3 +323,17 @@ def test_skill_tells_manager_about_its_team():
     assert "## Your team" in text
     assert "Your team in this flow" in text
     assert "list_agents" in text
+
+
+def test_project_manager_qa_search_is_the_hard_first_step_before_any_human_ask():
+    skill = " ".join((APP_DIR / "skills/aw-agent-project-manager/SKILL.md").read_text().split())
+    order = skill[skill.index("## Order of work on every card"):skill.index("## Kick")]
+    assert "`qa_search` is the first step of ANY blocker handling" in order
+    assert "no `ask_human` and no re-ping" in order
+    assert "retry once" in order and "server-side trace" in order
+    # qa_search precedes reading the card and the trace check in the order of work.
+    assert order.index("1. `qa_search`") < order.index("2. Read the card") < order.index("3. Look for the server-side trace")
+    park = skill[skill.index("## Human park protocol"):]
+    assert park.index("qa_search") < park.index("ONE `ask_human`")
+    prompt = " ".join((APP_DIR / "prompts/project-manager.md").read_text().split())
+    assert "`qa_search` is the hard first step" in prompt and "re-ping" in prompt
