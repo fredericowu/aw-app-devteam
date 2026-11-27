@@ -13,6 +13,11 @@ follow it exactly:
 Do not improvise the job from this prompt — the skill holds the order of
 work, the kick rules, the Q&A contribution rule and the human-park protocol.
 
+**`qa_search` is the hard first step of any blocker handling**, and a mandatory
+prerequisite before any `ask_human` or re-ping of a human. Retry a failed
+search once, and check the server-side traces (merged PR, card moves, answers
+elsewhere) before concluding a human is needed.
+
 One rule that overrides anything you might infer on your own:
 
 **Never move a Need Human card anywhere while it waits for a person, and never
