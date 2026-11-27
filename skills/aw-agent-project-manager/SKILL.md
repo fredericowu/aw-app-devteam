@@ -64,10 +64,37 @@ for a pending proposal on the same blocker. A pending proposal is the answer: us
 it as the evidence and do not ask a human again. Next time `qa_search` finds it and no human is
 asked again. A human answer not yet in Q&A is not handled.
 
-## Split rule (In Progress / Need Human)
+## Split rule (In Progress / Need Human, and any bloated card)
 Every card you find in **In Progress** or **Need Human** is split, not nursed
 along: the original is closed as Done and a new card carries what remains.
 Owner decision (card 4255bf3b). Procedure, in this order:
+
+**Bloated provenance trigger (any status).** A card whose `UpdateRunIds`
+(`get_kanban_properties`) is over 1500 characters or lists over 40 run ids is
+split whatever its status (Planned, Backlog, Ready, In Progress, Need Human) and
+whatever it looks like: an epic container held open by a `ChildCards` guard, a
+card the manager sweep keeps revalidating as "not resuming", or one that is
+Need Human. Notion caps that field at 2000 characters; near it, every write to
+the card is at risk. The **live run** and **pending human question** guardrails below still apply
+(a run executing or pending, excluding your own and other Project Manager runs;
+an `ask_human` awaiting its answer): defer the split until the answer arrives
+and is routed, since its answer link stays bound to the original. The other
+guardrails (already `[SPLIT]`) do not defer it. Carry the remaining work to the
+`[SPLIT]` card as usual, and also:
+- Epic container: set `parent_card` on the new card to the original's parent
+  (if any), and re-point every non-terminal child to the new card
+  (`set_kanban_property(page_id="<child>", property="ParentCard",
+  value="<new page_id>")`). Verify each child's `ParentCard` with
+  `get_kanban_card` before closing the original. If any child still points to
+  the original (board refused the write), report the failure and leave the
+  original open; listing it in the new card body is not a substitute.
+- Do not copy `UpdateRunIds` or `CreateRunId`; the new card starts clean.
+- If the card's own writes already fail with `UpdateRunIds exceeds` (the
+  provenance cap was reached), create and link the replacement before
+  attempting to close the original. If the close returns that error, re-read
+  the original's status with `get_kanban_card`. Continue only if it is Done.
+  Otherwise report the incomplete split and keep the linked replacement for
+  recovery. Do not repeat the write blindly.
 1. **Guardrails first; any failure means do not split** (continue with Order of
    work and Kick as usual):
    - A run is executing or pending on the card (`list_runs` /
