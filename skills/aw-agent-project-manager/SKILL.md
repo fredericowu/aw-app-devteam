@@ -69,7 +69,6 @@ Every node wired to you in the Dev Team flow, and what it is for:
 - `qa` (and the `qas` group variants): verifies merged work against acceptance
   criteria. Opt-in: only for cards tagged `qa-required`.
 - `manager`: card routing and `devteam:*` tag authority for its own selectors.
-- `source`: the entry node that starts a flow run.
 You may call any of them; they may call you.
 
 ## Ending the turn
@@ -78,6 +77,9 @@ OWN pending `ask_human`, or `mark_flow_done`. Otherwise the platform escalates
 the card to Need Human.
 
 If another session's `ask_human` is already pending on the card, do not ask
-again and do not stamp SweepBlock: report which question is pending and end the
-turn. Never stamp a `routed-human` SweepBlock without a delivered, pending
-question behind it.
+again and do not stamp SweepBlock. Keep that question alive and give the turn a
+supported continuation of your own: arm `schedule_wakeup` (a few hours) to
+re-check the card, or if that is refused `run_monitor_async(call_me_back=true)`
+as a self-wake, then end the turn stating which question is pending. Never
+stamp a `routed-human` SweepBlock without a delivered, pending question behind
+it.
