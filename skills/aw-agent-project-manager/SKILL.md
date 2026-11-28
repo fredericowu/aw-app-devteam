@@ -95,6 +95,26 @@ guardrails (already `[SPLIT]`) do not defer it. Carry the remaining work to the
   the original's status with `get_kanban_card`. Continue only if it is Done.
   Otherwise report the incomplete split and keep the linked replacement for
   recovery. Do not repeat the write blindly.
+**Size-held card (card 4265bf3b).** AP-MT holds a card that passes either size
+limit (more than 30 `UpdateRunIds` entries or more than 1000 comment characters;
+check `GET /api/card-size-holds` for the live mode and limits) and refuses every
+NEW card-bound run on it with HTTP 409, so the sweeps never reach you through
+the normal dispatch. The card carries a `🚧 Card size hold` comment, and the
+sysadmins were notified once. The hold is a row in AP-MT, not the comment:
+deleting the comment does not release it. Only a dispatch with `flow_detached`
+(and wakeups, which resume existing work) bypasses it, so a split is run as a
+detached Project Manager run given the explicit page id. This trigger is
+stricter than the bloated-provenance one above, so a held card that is not yet
+over 40 ids or 1500 characters is still split. Run the whole procedure below
+unchanged (guardrails, live run, pending human question, `[SPLIT]` card linked
+before closing the original). Do not read the whole comment history: a held
+card can carry over 100,000 comment characters, which is what breaks a run. Read
+the card properties, the newest comments only, and the remaining-work summary.
+The hold clears by itself when the original goes Done (the next ticker pass);
+if it must be cleared sooner, or the card is deliberately kept whole, an
+operator releases it with `POST /api/card-size-holds/release {"page_id": ...}`.
+If the split cannot proceed safely, leave the card held and say which guardrail
+stopped it. Never release a hold to get around a guardrail.
 1. **Guardrails first; any failure means do not split** (continue with Order of
    work and Kick as usual):
    - A run is executing or pending on the card (`list_runs` /
